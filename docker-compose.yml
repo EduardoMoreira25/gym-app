@@ -1,0 +1,26 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: gym-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    networks:
+      proxy-net:
+        ipv4_address: 172.21.0.41
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: gym-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      proxy-net:
+        ipv4_address: 172.21.0.42
+
+networks:
+  proxy-net:
+    external: true
