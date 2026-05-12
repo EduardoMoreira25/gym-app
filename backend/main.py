@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import Optional, List
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from datetime import datetime
 import os
 
 app = FastAPI(title="Gym API")
@@ -32,6 +31,7 @@ class WorkoutTypeCreate(BaseModel):
 
 class ExerciseCreate(BaseModel):
     name: str
+    workout_type_id: Optional[int] = None
 
 class SetRecord(BaseModel):
     exercise_id: int
@@ -88,8 +88,29 @@ def create_exercise(data: ExerciseCreate):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("INSERT INTO exercises (name) VALUES (%s) RETURNING *", (data.name,))
+            exercise = cur.fetchone()
+            if data.workout_type_id:
+                cur.execute(
+                    "INSERT INTO exercise_workout_types (exercise_id, workout_type_id) VALUES (%s, %s)",
+                    (exercise['id'], data.workout_type_id)
+                )
             conn.commit()
-            return cur.fetchone()
+            return exercise
+
+@app.get("/exercises/{exercise_id}/suggested-weight")
+def get_suggested_weight(exercise_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT weight_kg, COUNT(*) as cnt
+                FROM workout_sets
+                WHERE exercise_id = %s AND weight_kg IS NOT NULL
+                GROUP BY weight_kg
+                ORDER BY cnt DESC
+                LIMIT 1
+            """, (exercise_id,))
+            row = cur.fetchone()
+            return {"weight_kg": row['weight_kg'] if row else None}
 
 # --- Workouts ---
 @app.get("/workouts")
@@ -132,11 +153,12 @@ def get_workout(workout_id: int):
 
             if workout['type'] == 'ginasio':
                 cur.execute("""
-                    SELECT ws.*, e.name as exercise_name
+                    SELECT ws.*, e.name as exercise_name,
+                           MIN(ws.id) OVER (PARTITION BY ws.exercise_id) AS exercise_order
                     FROM workout_sets ws
                     JOIN exercises e ON ws.exercise_id = e.id
                     WHERE ws.workout_id = %s
-                    ORDER BY e.name, ws.set_number
+                    ORDER BY exercise_order, ws.set_number
                 """, (workout_id,))
                 workout['sets'] = cur.fetchall()
             else:

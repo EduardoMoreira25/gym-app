@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { Plus, X, ChevronLeft, Dumbbell, Footprints, Trash2, Clock, MapPin, ChevronDown, ChevronUp, Filter, Calendar } from 'lucide-react'
 
@@ -26,13 +26,17 @@ const card = {
 const today = () => new Date().toISOString().split('T')[0]
 
 export default function App() {
-  const [view, setView] = useState('list')
+  const [view, setView] = useState(() => {
+    const saved = localStorage.getItem('gym_active_view')
+    return (saved === 'ginasio' || saved === 'caminhada') ? saved : 'list'
+  })
   const [workouts, setWorkouts] = useState([])
   const [selectedWorkout, setSelectedWorkout] = useState(null)
   const [filterType, setFilterType] = useState('')
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+  const [page, setPage] = useState(1)
 
   const loadWorkouts = async () => {
     const params = {}
@@ -43,7 +47,15 @@ export default function App() {
     setWorkouts(res.data)
   }
 
-  useEffect(() => { loadWorkouts() }, [filterType, filterFrom, filterTo])
+  useEffect(() => { setPage(1); loadWorkouts() }, [filterType, filterFrom, filterTo])
+
+  useEffect(() => {
+    if (view === 'ginasio' || view === 'caminhada') {
+      localStorage.setItem('gym_active_view', view)
+    } else {
+      localStorage.removeItem('gym_active_view')
+    }
+  }, [view])
 
   const openWorkout = async (id) => {
     const res = await axios.get(`${API}/workouts/${id}`)
@@ -127,46 +139,74 @@ export default function App() {
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', paddingTop: '3rem' }}>
                 No workouts yet. Hit the + button!
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {workouts.map(w => (
-                  <div
-                    key={w.id}
-                    onClick={() => openWorkout(w.id)}
-                    style={{
-                      ...card,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '1rem',
-                      transition: 'all 0.2s'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.background = 'var(--surface-hover)' }}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
-                  >
-                    <div style={{
-                      width: '40px', height: '40px', borderRadius: '10px',
-                      background: w.type === 'ginasio' ? 'var(--orange-dim2)' : 'rgba(74,140,106,0.15)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                    }}>
-                      {w.type === 'ginasio'
-                        ? <Dumbbell size={18} color="var(--orange)" />
-                        : <Footprints size={18} color="var(--green-text)" />}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 500, fontSize: '0.9rem', color: 'var(--text)' }}>
-                        {w.type === 'ginasio' ? (w.workout_type_name || 'Ginásio') : 'Caminhada'}
+            ) : (() => {
+              const PER_PAGE = 10
+              const totalPages = Math.ceil(workouts.length / PER_PAGE)
+              const visible = workouts.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+              return (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {visible.map(w => (
+                      <div
+                        key={w.id}
+                        onClick={() => openWorkout(w.id)}
+                        style={{
+                          ...card,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '1rem',
+                          transition: 'all 0.2s'
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.background = 'var(--surface-hover)' }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
+                      >
+                        <div style={{
+                          width: '40px', height: '40px', borderRadius: '10px',
+                          background: w.type === 'ginasio' ? 'var(--orange-dim2)' : 'rgba(74,140,106,0.15)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                        }}>
+                          {w.type === 'ginasio'
+                            ? <Dumbbell size={18} color="var(--orange)" />
+                            : <Footprints size={18} color="var(--green-text)" />}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 500, fontSize: '0.9rem', color: 'var(--text)' }}>
+                            {w.type === 'ginasio' ? (w.workout_type_name || 'Ginásio') : 'Caminhada'}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                            {formatDate(w.date)}
+                            {w.duration_minutes && ` · ${w.duration_minutes} min`}
+                          </div>
+                        </div>
+                        <ChevronDown size={16} color="var(--text-muted)" style={{ transform: 'rotate(-90deg)' }} />
                       </div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                        {formatDate(w.date)}
-                        {w.duration_minutes && ` · ${w.duration_minutes} min`}
-                      </div>
-                    </div>
-                    <ChevronDown size={16} color="var(--text-muted)" style={{ transform: 'rotate(-90deg)' }} />
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
+                  {totalPages > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1.25rem', marginTop: '1.25rem' }}>
+                      <button
+                        onClick={() => setPage(p => p - 1)}
+                        disabled={page === 1}
+                        style={btn({ background: 'var(--surface)', border: '1px solid var(--border)', color: page === 1 ? 'var(--border)' : 'var(--text-muted)', padding: '0.4rem 0.75rem' })}
+                      >
+                        ←
+                      </button>
+                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {page} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setPage(p => p + 1)}
+                        disabled={page === totalPages}
+                        style={btn({ background: 'var(--surface)', border: '1px solid var(--border)', color: page === totalPages ? 'var(--border)' : 'var(--text-muted)', padding: '0.4rem 0.75rem' })}
+                      >
+                        →
+                      </button>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
           </>
         )}
 
@@ -201,8 +241,8 @@ export default function App() {
           </div>
         )}
 
-        {view === 'ginasio' && <GinasioForm onSave={() => { loadWorkouts(); setView('list') }} />}
-        {view === 'caminhada' && <CaminhadaForm onSave={() => { loadWorkouts(); setView('list') }} />}
+        {view === 'ginasio' && <GinasioForm onSave={() => { loadWorkouts(); setView('list') }} onCancel={() => setView('list')} />}
+        {view === 'caminhada' && <CaminhadaForm onSave={() => { loadWorkouts(); setView('list') }} onCancel={() => setView('list')} />}
         {view === 'detail' && selectedWorkout && (
           <WorkoutDetail workout={selectedWorkout} onDelete={() => deleteWorkout(selectedWorkout.id)} formatDate={formatDate} />
         )}
@@ -211,16 +251,60 @@ export default function App() {
   )
 }
 
-function GinasioForm({ onSave }) {
+const GINASIO_DRAFT = 'gym_ginasio_draft'
+const CAMINHADA_DRAFT = 'gym_caminhada_draft'
+const readDraft = (key) => { try { return JSON.parse(localStorage.getItem(key)) || null } catch { return null } }
+
+function GinasioForm({ onSave, onCancel }) {
   const [workoutTypes, setWorkoutTypes] = useState([])
   const [exercises, setExercises] = useState([])
-  const [selectedType, setSelectedType] = useState('')
-  const [duration, setDuration] = useState('')
-  const [date, setDate] = useState(today())
-  const [exerciseRows, setExerciseRows] = useState([{ exercise_id: '', sets: [{ weight_kg: '', reps: '' }] }])
+  const [selectedType, setSelectedType] = useState(() => readDraft(GINASIO_DRAFT)?.selectedType ?? '')
+  const [duration, setDuration] = useState(() => readDraft(GINASIO_DRAFT)?.duration ?? '')
+  const [date, setDate] = useState(() => readDraft(GINASIO_DRAFT)?.date ?? today())
+  const [exerciseRows, setExerciseRows] = useState(() => readDraft(GINASIO_DRAFT)?.exerciseRows ?? [{ exercise_id: '', sets: [{ weight_kg: '', reps: '' }] }])
   const [newTypeName, setNewTypeName] = useState('')
   const [newExerciseName, setNewExerciseName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [elapsed, setElapsed] = useState(0)
+  const [watching, setWatching] = useState(false)
+  const intervalRef = useRef(null)
+  const startTimeRef = useRef(null)
+
+  const startWatch = () => {
+    if (intervalRef.current) return
+    startTimeRef.current = Date.now() - elapsed * 1000
+    setWatching(true)
+    intervalRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000))
+    }, 1000)
+  }
+
+  const stopWatch = () => {
+    clearInterval(intervalRef.current)
+    intervalRef.current = null
+    setWatching(false)
+    setDuration(String(Math.max(1, Math.round(elapsed / 60))))
+  }
+
+  const clearWatch = () => {
+    clearInterval(intervalRef.current)
+    intervalRef.current = null
+  }
+
+  const formatElapsed = (s) => {
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    const sec = s % 60
+    return h > 0
+      ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+      : `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  }
+
+  useEffect(() => () => clearWatch(), [])
+
+  useEffect(() => {
+    localStorage.setItem(GINASIO_DRAFT, JSON.stringify({ selectedType, duration, date, exerciseRows }))
+  }, [selectedType, duration, date, exerciseRows])
 
   useEffect(() => {
     axios.get(`${API}/workout-types`).then(r => setWorkoutTypes(r.data))
@@ -243,16 +327,22 @@ function GinasioForm({ onSave }) {
 
   const addExercise = async () => {
     if (!newExerciseName.trim()) return
-    const res = await axios.post(`${API}/exercises`, { name: newExerciseName.trim() })
+    const res = await axios.post(`${API}/exercises`, {
+      name: newExerciseName.trim(),
+      workout_type_id: selectedType ? parseInt(selectedType) : null
+    })
     setExercises(prev => [...prev, res.data])
     setNewExerciseName('')
   }
 
   const addExerciseRow = () => setExerciseRows(prev => [...prev, { exercise_id: '', sets: [{ weight_kg: '', reps: '' }] }])
-  const addSet = (rowIdx) => setExerciseRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, sets: [...r.sets, { weight_kg: '', reps: '' }] } : r))
+  const addSet = (rowIdx) => setExerciseRows(prev => prev.map((r, i) => {
+    if (i !== rowIdx) return r
+    const lastWeight = r.sets[r.sets.length - 1]?.weight_kg ?? ''
+    return { ...r, sets: [...r.sets, { weight_kg: lastWeight, reps: '' }] }
+  }))
   const removeSet = (rowIdx, setIdx) => setExerciseRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, sets: r.sets.filter((_, si) => si !== setIdx) } : r))
   const removeExerciseRow = (rowIdx) => setExerciseRows(prev => prev.filter((_, i) => i !== rowIdx))
-  const updateRow = (rowIdx, field, value) => setExerciseRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, [field]: value } : r))
   const updateSet = (rowIdx, setIdx, field, value) => setExerciseRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, sets: r.sets.map((s, si) => si === setIdx ? { ...s, [field]: value } : s) } : r))
 
   const handleSave = async () => {
@@ -277,7 +367,15 @@ function GinasioForm({ onSave }) {
       date
     })
     setSaving(false)
+    clearWatch()
+    localStorage.removeItem(GINASIO_DRAFT)
     onSave()
+  }
+
+  const handleCancel = () => {
+    clearWatch()
+    localStorage.removeItem(GINASIO_DRAFT)
+    onCancel()
   }
 
   return (
@@ -293,7 +391,7 @@ function GinasioForm({ onSave }) {
           {workoutTypes.map(t => (
             <button
               key={t.id}
-              onClick={() => { setSelectedType(t.id); setExerciseRows([{ exercise_id: '', sets: [{ weight_kg: '', reps: '' }] }]) }}
+              onClick={() => { setSelectedType(t.id); setExerciseRows([{ exercise_id: '', sets: [{ weight_kg: '', reps: '' }] }]); startWatch() }}
               style={{
                 padding: '0.4rem 0.9rem', borderRadius: '20px', border: '1px solid',
                 borderColor: selectedType == t.id ? 'var(--orange)' : 'var(--border)',
@@ -317,7 +415,21 @@ function GinasioForm({ onSave }) {
         {exerciseRows.map((row, rowIdx) => (
           <div key={rowIdx} style={{ borderLeft: '2px solid var(--orange)', paddingLeft: '0.75rem', marginBottom: '1.25rem' }}>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <select value={row.exercise_id} onChange={e => updateRow(rowIdx, 'exercise_id', e.target.value)}>
+              <select value={row.exercise_id} onChange={async e => {
+                const exId = e.target.value
+                setExerciseRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, exercise_id: exId } : r))
+                if (exId) {
+                  try {
+                    const res = await axios.get(`${API}/exercises/${exId}/suggested-weight`)
+                    if (res.data.weight_kg !== null) {
+                      setExerciseRows(prev => prev.map((r, i) => i === rowIdx
+                        ? { ...r, sets: r.sets.map(s => ({ ...s, weight_kg: String(res.data.weight_kg) })) }
+                        : r
+                      ))
+                    }
+                  } catch {}
+                }
+              }}>
                 <option value="">Select exercise...</option>
                 {exercises.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
               </select>
@@ -355,23 +467,48 @@ function GinasioForm({ onSave }) {
       </div>
 
       <div style={card}>
-        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem', fontFamily: 'JetBrains Mono, monospace' }}>DURATION (minutes)</label>
-        <input type="number" placeholder="e.g. 60" value={duration} onChange={e => setDuration(e.target.value)} />
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+          <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', flex: 1 }}>DURATION (minutes)</label>
+          {!watching && (
+            <button onClick={startWatch} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: 0 }}>
+              ▶ start
+            </button>
+          )}
+        </div>
+        {watching ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1.05rem', color: 'var(--orange)', flex: 1, letterSpacing: '0.05em' }}>
+              {formatElapsed(elapsed)}
+            </span>
+            <button onClick={stopWatch} style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', fontSize: '0.75rem', padding: '0.25rem 0.65rem' })}>
+              Stop
+            </button>
+          </div>
+        ) : (
+          <input type="number" placeholder="e.g. 60" value={duration} onChange={e => setDuration(e.target.value)} />
+        )}
       </div>
 
       <button onClick={handleSave} disabled={saving} style={btn({ background: 'var(--orange)', color: 'white', justifyContent: 'center', padding: '0.75rem', fontSize: '0.95rem' })}>
         {saving ? 'Saving...' : 'Save Workout'}
       </button>
+      <button onClick={handleCancel} style={btn({ background: '#080808', color: '#b91c1c', border: '1px solid #7f1d1d', justifyContent: 'center', padding: '0.75rem', fontSize: '0.95rem' })}>
+        Cancel Workout
+      </button>
     </div>
   )
 }
 
-function CaminhadaForm({ onSave }) {
-  const [distance, setDistance] = useState('')
-  const [duration, setDuration] = useState('')
-  const [notes, setNotes] = useState('')
-  const [date, setDate] = useState(today())
+function CaminhadaForm({ onSave, onCancel }) {
+  const [distance, setDistance] = useState(() => readDraft(CAMINHADA_DRAFT)?.distance ?? '')
+  const [duration, setDuration] = useState(() => readDraft(CAMINHADA_DRAFT)?.duration ?? '')
+  const [notes, setNotes] = useState(() => readDraft(CAMINHADA_DRAFT)?.notes ?? '')
+  const [date, setDate] = useState(() => readDraft(CAMINHADA_DRAFT)?.date ?? today())
   const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    localStorage.setItem(CAMINHADA_DRAFT, JSON.stringify({ distance, duration, notes, date }))
+  }, [distance, duration, notes, date])
 
   const handleSave = async () => {
     setSaving(true)
@@ -382,7 +519,13 @@ function CaminhadaForm({ onSave }) {
       date
     })
     setSaving(false)
+    localStorage.removeItem(CAMINHADA_DRAFT)
     onSave()
+  }
+
+  const handleCancel = () => {
+    localStorage.removeItem(CAMINHADA_DRAFT)
+    onCancel()
   }
 
   return (
@@ -405,6 +548,9 @@ function CaminhadaForm({ onSave }) {
       </div>
       <button onClick={handleSave} disabled={saving} style={btn({ background: 'var(--green-text)', color: 'white', justifyContent: 'center', padding: '0.75rem', fontSize: '0.95rem' })}>
         {saving ? 'Saving...' : 'Save Workout'}
+      </button>
+      <button onClick={handleCancel} style={btn({ background: '#080808', color: '#b91c1c', border: '1px solid #7f1d1d', justifyContent: 'center', padding: '0.75rem', fontSize: '0.95rem' })}>
+        Cancel Workout
       </button>
     </div>
   )
