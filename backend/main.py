@@ -32,6 +32,11 @@ class WorkoutTypeCreate(BaseModel):
 class ExerciseCreate(BaseModel):
     name: str
     workout_type_id: Optional[int] = None
+    muscle_group: Optional[str] = None
+
+class ExerciseUpdate(BaseModel):
+    name: Optional[str] = None
+    muscle_group: Optional[str] = None
 
 class SetRecord(BaseModel):
     exercise_id: int
@@ -87,7 +92,10 @@ def get_exercises(workout_type_id: Optional[int] = None):
 def create_exercise(data: ExerciseCreate):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("INSERT INTO exercises (name) VALUES (%s) RETURNING *", (data.name,))
+            cur.execute(
+                "INSERT INTO exercises (name, muscle_group) VALUES (%s, %s) RETURNING *",
+                (data.name, data.muscle_group)
+            )
             exercise = cur.fetchone()
             if data.workout_type_id:
                 cur.execute(
@@ -96,6 +104,55 @@ def create_exercise(data: ExerciseCreate):
                 )
             conn.commit()
             return exercise
+
+@app.patch("/exercises/{exercise_id}")
+def update_exercise(exercise_id: int, data: ExerciseUpdate):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            fields, values = [], []
+            if data.name is not None:
+                fields.append("name = %s")
+                values.append(data.name)
+            if 'muscle_group' in data.model_fields_set:
+                fields.append("muscle_group = %s")
+                values.append(data.muscle_group)
+            if not fields:
+                cur.execute("SELECT * FROM exercises WHERE id = %s", (exercise_id,))
+                return cur.fetchone()
+            values.append(exercise_id)
+            try:
+                cur.execute(f"UPDATE exercises SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
+                exercise = cur.fetchone()
+                if not exercise:
+                    raise HTTPException(status_code=404, detail="Exercise not found")
+                conn.commit()
+                return exercise
+            except psycopg2.IntegrityError:
+                conn.rollback()
+                raise HTTPException(status_code=409, detail="An exercise with that name already exists")
+
+@app.delete("/exercises/{exercise_id}")
+def delete_exercise(exercise_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            try:
+                cur.execute("DELETE FROM exercises WHERE id = %s", (exercise_id,))
+                conn.commit()
+                return {"message": "Deleted"}
+            except psycopg2.IntegrityError:
+                conn.rollback()
+                raise HTTPException(status_code=409, detail="This exercise is used in past workouts and cannot be deleted")
+
+@app.delete("/exercise-workout-types/{exercise_id}/{workout_type_id}")
+def unlink_exercise_from_type(exercise_id: int, workout_type_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM exercise_workout_types WHERE exercise_id = %s AND workout_type_id = %s",
+                (exercise_id, workout_type_id)
+            )
+            conn.commit()
+            return {"message": "Unlinked"}
 
 @app.get("/exercises/{exercise_id}/suggested-weight")
 def get_suggested_weight(exercise_id: int):
@@ -199,6 +256,59 @@ def create_caminhada_workout(data: CaminhadaWorkoutCreate):
             """, (workout['id'], data.distance_km, data.notes))
             conn.commit()
             return workout
+
+@app.get("/analytics/volume")
+def get_volume(weeks: int = 8):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    DATE_TRUNC('week', w.date)::date AS week,
+                    e.muscle_group,
+                    SUM(ws.reps)::int AS volume
+                FROM workouts w
+                JOIN workout_sets ws ON ws.workout_id = w.id
+                JOIN exercises e ON ws.exercise_id = e.id
+                WHERE w.date >= NOW() - %s * INTERVAL '1 week'
+                  AND e.muscle_group IS NOT NULL
+                  AND e.muscle_group <> ''
+                GROUP BY 1, 2
+                ORDER BY 1, 2
+            """, (weeks,))
+            return [{'week': r['week'].isoformat(), 'muscle_group': r['muscle_group'], 'volume': r['volume']} for r in cur.fetchall()]
+
+@app.get("/analytics/frequency")
+def get_frequency(weeks: int = 8):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    w.date::date AS day,
+                    w.type,
+                    wt.name AS workout_type_name
+                FROM workouts w
+                LEFT JOIN workout_types wt ON w.workout_type_id = wt.id
+                WHERE w.date >= NOW() - %s * INTERVAL '1 week'
+                ORDER BY day
+            """, (weeks,))
+            return [{'day': r['day'].isoformat(), 'type': r['type'], 'workout_type_name': r['workout_type_name']} for r in cur.fetchall()]
+
+@app.get("/analytics/progression")
+def get_progression(exercise_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    w.date::date AS day,
+                    MAX(ws.weight_kg) AS max_weight
+                FROM workouts w
+                JOIN workout_sets ws ON ws.workout_id = w.id
+                WHERE ws.exercise_id = %s
+                  AND ws.weight_kg IS NOT NULL
+                GROUP BY w.date::date
+                ORDER BY day
+            """, (exercise_id,))
+            return [{'day': r['day'].isoformat(), 'max_weight': float(r['max_weight'])} for r in cur.fetchall()]
 
 @app.delete("/workouts/{workout_id}")
 def delete_workout(workout_id: int):
