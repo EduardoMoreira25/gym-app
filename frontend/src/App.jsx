@@ -327,7 +327,13 @@ export default function App() {
           <WorkoutDetail workout={selectedWorkout} onDelete={() => deleteWorkout(selectedWorkout.id)} formatDate={formatDate} />
         )}
         {view === 'config' && <ExerciseConfig />}
-        {view === 'analytics' && <Analytics />}
+        {view === 'analytics' && <Analytics onWeekClick={({ from, to }) => {
+          setFilterFrom(from)
+          setFilterTo(to)
+          setShowFilters(true)
+          setPage(1)
+          setView('list')
+        }} />}
       </div>
     </div>
   )
@@ -937,13 +943,14 @@ function ExerciseConfig() {
   )
 }
 
-function Analytics() {
+function Analytics({ onWeekClick }) {
   const [range, setRange] = useState(8)
   const [rawVolume, setRawVolume] = useState([])
   const [freqData, setFreqData] = useState([])
   const [allExercises, setAllExercises] = useState([])
   const [progExId, setProgExId] = useState('')
   const [progData, setProgData] = useState([])
+  const [volumeTooltip, setVolumeTooltip] = useState(null)
 
   useEffect(() => {
     axios.get(`${API}/analytics/volume`, { params: { weeks: range } }).then(r => setRawVolume(r.data))
@@ -965,7 +972,7 @@ function Analytics() {
   const volumeChartData = (() => {
     const weeks = [...new Set(rawVolume.map(r => r.week))].sort()
     return weeks.map(w => {
-      const obj = { week: fmtShortDate(w) }
+      const obj = { week: fmtShortDate(w), weekRaw: w }
       muscleKeys.forEach(m => {
         const row = rawVolume.find(r => r.week === w && r.muscle_group === m)
         obj[m] = row ? row.volume : 0
@@ -1027,17 +1034,54 @@ function Analytics() {
         ) : (
           <>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={volumeChartData} barCategoryGap="30%" margin={{ top: 4, right: 4, bottom: 0, left: -16 }}>
+              <BarChart
+                data={volumeChartData}
+                barCategoryGap="30%"
+                margin={{ top: 4, right: 4, bottom: 0, left: -16 }}
+                style={{ cursor: 'pointer' }}
+                onMouseMove={s => { if (s.activePayload?.length) setVolumeTooltip({ label: s.activeLabel, payload: s.activePayload }) }}
+                onMouseLeave={() => setVolumeTooltip(null)}
+                onClick={data => {
+                  const weekRaw = data?.activePayload?.[0]?.payload?.weekRaw
+                  if (!weekRaw || !onWeekClick) return
+                  const end = new Date(weekRaw + 'T12:00:00')
+                  end.setDate(end.getDate() + 6)
+                  onWeekClick({ from: weekRaw, to: toLocalDateStr(end) })
+                }}
+              >
                 <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
                 <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--text)', marginBottom: '0.4rem', fontWeight: 600 }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                <Tooltip content={() => null} wrapperStyle={{ display: 'none' }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
                 {muscleKeys.map((m, i) => (
                   <Bar key={m} dataKey={m} stackId="a" fill={colorMap[m]} radius={i === muscleKeys.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
                 ))}
               </BarChart>
             </ResponsiveContainer>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1rem', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
+
+            {/* Hover breakdown — fixed space below chart, no layout shift */}
+            <div style={{ minHeight: '54px', margin: '0.5rem 0 0.25rem' }}>
+              {volumeTooltip ? (
+                <div style={{ ...tooltipStyle, padding: '0.55rem 0.85rem' }}>
+                  <div style={{ color: 'var(--text)', fontWeight: 600, fontSize: '0.78rem', marginBottom: '0.35rem' }}>{volumeTooltip.label}</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.2rem 1rem' }}>
+                    {volumeTooltip.payload?.filter(p => p.value > 0).map(p => (
+                      <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.73rem', fontFamily: 'JetBrains Mono, monospace' }}>
+                        <div style={{ width: 7, height: 7, borderRadius: 2, background: p.fill, flexShrink: 0 }} />
+                        <span style={{ color: 'var(--text-muted)' }}>{p.name.split(' (')[0]}:</span>
+                        <span style={{ color: 'var(--text)', fontWeight: 600 }}>{p.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.68rem', color: 'var(--border)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', paddingTop: '1rem' }}>
+                  hover a column to see breakdown
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
               {muscleKeys.map(m => (
                 <div key={m} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
                   <div style={{ width: 8, height: 8, borderRadius: 2, background: colorMap[m], flexShrink: 0 }} />
