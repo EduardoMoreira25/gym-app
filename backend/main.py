@@ -257,6 +257,37 @@ def create_caminhada_workout(data: CaminhadaWorkoutCreate):
             conn.commit()
             return workout
 
+@app.get("/analytics/summary")
+def get_summary(months: int = 6):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    COUNT(CASE WHEN date >= DATE_TRUNC('week', NOW()) THEN 1 END)::int                                           AS this_week,
+                    COUNT(CASE WHEN date >= DATE_TRUNC('week', NOW()) - INTERVAL '1 week'
+                                AND date <  DATE_TRUNC('week', NOW())  THEN 1 END)::int                                          AS last_week,
+                    COUNT(CASE WHEN date >= DATE_TRUNC('month', NOW()) THEN 1 END)::int                                          AS this_month,
+                    COUNT(CASE WHEN date >= DATE_TRUNC('month', NOW()) - INTERVAL '1 month'
+                                AND date <  DATE_TRUNC('month', NOW()) THEN 1 END)::int                                          AS last_month
+                FROM workouts
+            """)
+            stats = cur.fetchone()
+            cur.execute("""
+                SELECT
+                    TO_CHAR(DATE_TRUNC('month', date), 'YYYY-MM') AS month,
+                    COUNT(*)::int AS count
+                FROM workouts
+                WHERE date >= DATE_TRUNC('month', NOW()) - (%s - 1) * INTERVAL '1 month'
+                GROUP BY 1
+                ORDER BY 1
+            """, (months,))
+            monthly = [{'month': r['month'], 'count': r['count']} for r in cur.fetchall()]
+            return {
+                'this_week': stats['this_week'], 'last_week': stats['last_week'],
+                'this_month': stats['this_month'], 'last_month': stats['last_month'],
+                'monthly': monthly,
+            }
+
 @app.get("/analytics/volume")
 def get_volume(weeks: int = 8):
     with get_conn() as conn:

@@ -951,6 +951,8 @@ function Analytics({ onWeekClick }) {
   const [progExId, setProgExId] = useState('')
   const [progData, setProgData] = useState([])
   const [volumeTooltip, setVolumeTooltip] = useState(null)
+  const [monthRange, setMonthRange] = useState(6)
+  const [summary, setSummary] = useState(null)
 
   useEffect(() => {
     axios.get(`${API}/analytics/volume`, { params: { weeks: range } }).then(r => setRawVolume(r.data))
@@ -965,6 +967,10 @@ function Analytics({ onWeekClick }) {
     if (!progExId) { setProgData([]); return }
     axios.get(`${API}/analytics/progression`, { params: { exercise_id: progExId } }).then(r => setProgData(r.data))
   }, [progExId])
+
+  useEffect(() => {
+    axios.get(`${API}/analytics/summary`, { params: { months: monthRange } }).then(r => setSummary(r.data))
+  }, [monthRange])
 
   // Pivot volume rows → { week, MuscleA: vol, MuscleB: vol, ... }
   const muscleKeys = [...new Set(rawVolume.map(r => r.muscle_group))].sort()
@@ -1092,6 +1098,88 @@ function Analytics({ onWeekClick }) {
           </>
         )}
       </div>
+
+      {/* Workout summary */}
+      {summary && (() => {
+        const monthlyFilled = (() => {
+          const result = []
+          const now = new Date()
+          for (let i = monthRange - 1; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+            const found = summary.monthly.find(m => m.month === key)
+            result.push({ month: key, count: found ? found.count : 0 })
+          }
+          return result
+        })()
+        const fmtMonth = key => {
+          const [y, mo] = key.split('-')
+          return new Date(+y, +mo - 1).toLocaleString('en', { month: 'short' })
+        }
+        const fmtMonthLong = key => {
+          const [y, mo] = key.split('-')
+          return new Date(+y, +mo - 1).toLocaleString('en', { month: 'long', year: 'numeric' })
+        }
+        return (
+          <div style={secCard}>
+            <div style={secLabel}>WORKOUT SUMMARY</div>
+
+            {/* This week / this month stat tiles */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+              {[
+                { label: 'THIS WEEK', curr: summary.this_week, prev: summary.last_week, prevLabel: 'last week' },
+                { label: 'THIS MONTH', curr: summary.this_month, prev: summary.last_month, prevLabel: 'last month' },
+              ].map(({ label, curr, prev, prevLabel }) => {
+                const diff = curr - prev
+                const trendColor = diff > 0 ? 'var(--green-text)' : diff < 0 ? '#e05555' : 'var(--text-muted)'
+                const trendText = diff > 0 ? `↑ +${diff}` : diff < 0 ? `↓ ${diff}` : '→ same'
+                return (
+                  <div key={label} style={{ background: 'var(--surface-hover)', borderRadius: '10px', padding: '0.85rem 1rem' }}>
+                    <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.62rem', color: 'var(--text-muted)', letterSpacing: '0.1em', marginBottom: '0.3rem' }}>{label}</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>{curr}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: trendColor, fontWeight: 600 }}>{trendText}</span>
+                      <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: 'var(--text-muted)' }}>vs {prevLabel} ({prev})</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Monthly history */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>MONTHLY HISTORY</div>
+              <div style={{ display: 'flex', gap: '0.3rem' }}>
+                {[3, 6, 12].map(m => (
+                  <button key={m} onClick={() => setMonthRange(m)} style={btn({
+                    background: monthRange === m ? 'var(--orange)' : 'var(--surface)',
+                    color: monthRange === m ? 'white' : 'var(--text-muted)',
+                    border: `1px solid ${monthRange === m ? 'var(--orange)' : 'var(--border)'}`,
+                    padding: '0.2rem 0.55rem',
+                    fontFamily: 'JetBrains Mono, monospace',
+                    fontSize: '0.7rem',
+                  })}>{m}m</button>
+                ))}
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={130}>
+              <BarChart data={monthlyFilled} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+                <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={fmtMonth} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  labelStyle={{ color: 'var(--text)', fontWeight: 600, marginBottom: '0.25rem' }}
+                  formatter={v => [v, 'workouts']}
+                  labelFormatter={fmtMonthLong}
+                  cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                />
+                <Bar dataKey="count" fill="var(--orange)" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )
+      })()}
 
       {/* Training frequency calendar */}
       <div style={secCard}>
