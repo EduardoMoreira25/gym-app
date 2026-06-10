@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { Plus, X, ChevronLeft, Dumbbell, Footprints, Trash2, Clock, MapPin, ChevronDown, ChevronUp, Filter, Calendar, Menu, Check } from 'lucide-react'
+import { Plus, X, ChevronLeft, Dumbbell, Footprints, Trash2, Clock, MapPin, ChevronDown, ChevronUp, Filter, Menu, Check } from 'lucide-react'
 
 const MUSCLE_GROUPS = [
   'Chest (pectoralis major – mid/overall)',
@@ -165,6 +165,7 @@ export default function App() {
               {[
                 { label: 'Exercise Config', target: 'config' },
                 { label: 'Analytics', target: 'analytics' },
+                { label: 'Smoking Log', target: 'smoking' },
               ].map(({ label, target }) => (
                 <button
                   key={target}
@@ -327,6 +328,7 @@ export default function App() {
           <WorkoutDetail workout={selectedWorkout} onDelete={() => deleteWorkout(selectedWorkout.id)} formatDate={formatDate} />
         )}
         {view === 'config' && <ExerciseConfig />}
+        {view === 'smoking' && <SmokingLog />}
         {view === 'analytics' && <Analytics onWeekClick={({ from, to }) => {
           setFilterFrom(from)
           setFilterTo(to)
@@ -1254,6 +1256,82 @@ function Analytics({ onWeekClick }) {
             </LineChart>
           </ResponsiveContainer>
         )}
+      </div>
+    </div>
+  )
+}
+
+function SmokingLog() {
+  const [stats, setStats] = useState(null)
+  const [logging, setLogging] = useState(null)
+  const [flash, setFlash] = useState(null)
+
+  const loadStats = () => axios.get(`${API}/smoke/stats`).then(r => setStats(r.data))
+
+  useEffect(() => { loadStats() }, [])
+
+  const log = async (type) => {
+    setLogging(type)
+    await axios.post(`${API}/smoke`, { type })
+    await loadStats()
+    setLogging(null)
+    setFlash(type)
+    setTimeout(() => setFlash(null), 1500)
+  }
+
+  const smokeCard = (type, label, duration) => (
+    <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div>
+        <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '1rem', marginBottom: '0.2rem' }}>{label}</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>logs {duration} min event · purple</div>
+      </div>
+      <button
+        onClick={() => log(type)}
+        disabled={!!logging}
+        style={btn({
+          background: flash === type ? '#7d3c98' : '#9b59b6',
+          color: 'white',
+          fontSize: '0.875rem',
+          padding: '0.5rem 1.4rem',
+          opacity: logging && logging !== type ? 0.5 : 1,
+          transition: 'background 0.3s',
+        })}
+      >
+        {logging === type ? '...' : flash === type ? 'Saved' : 'Log'}
+      </button>
+    </div>
+  )
+
+  const statTile = (label, value) => (
+    <div style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.4rem', textAlign: 'center' }}>
+      <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)' }}>{value ?? 0}</div>
+      <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', marginTop: '0.15rem' }}>{label}</div>
+    </div>
+  )
+
+  const statGroup = (heading, data) => (
+    <div>
+      <div style={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>{heading}</div>
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        {statTile('TODAY', data?.today)}
+        {statTile('YESTERDAY', data?.yesterday)}
+        {statTile('THIS WEEK', data?.this_week)}
+        {statTile('THIS MONTH', data?.this_month)}
+        {statTile('LAST MONTH', data?.last_month)}
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>SMOKING LOG</div>
+      {smokeCard('cigarrete', 'Cigarette', 5)}
+      {smokeCard('joint', 'Joint', 15)}
+      <div style={card}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
+          {statGroup('CIGARETTES', stats?.cigarrete)}
+          {statGroup('JOINTS', stats?.joint)}
+        </div>
       </div>
     </div>
   )

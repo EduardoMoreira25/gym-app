@@ -22,8 +22,18 @@ DB = {
     "password": os.getenv("DB_PASSWORD", ""),
 }
 
+PROD_DB = {
+    "host": os.getenv("DB_HOST", "172.21.0.1"),
+    "dbname": "productivity",
+    "user": os.getenv("DB_USER", "miendes"),
+    "password": os.getenv("DB_PASSWORD", ""),
+}
+
 def get_conn():
     return psycopg2.connect(**DB, cursor_factory=RealDictCursor)
+
+def get_prod_conn():
+    return psycopg2.connect(**PROD_DB, cursor_factory=RealDictCursor)
 
 # --- Models ---
 class WorkoutTypeCreate(BaseModel):
@@ -348,3 +358,52 @@ def delete_workout(workout_id: int):
             cur.execute("DELETE FROM workouts WHERE id = %s", (workout_id,))
             conn.commit()
             return {"message": "Deleted"}
+
+# --- Smoking Log ---
+class SmokeLog(BaseModel):
+    type: str  # 'cigarrete' or 'joint'
+
+@app.post("/smoke")
+def log_smoke(data: SmokeLog):
+    if data.type not in ('cigarrete', 'joint'):
+        raise HTTPException(status_code=400, detail="type must be 'cigarrete' or 'joint'")
+    minutes = 5 if data.type == 'cigarrete' else 15
+    with get_prod_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO calendar_events (id, title, start_at, end_at, is_all_day, is_local, color)
+                VALUES (gen_random_uuid()::text, %s, NOW(), NOW() + %s * INTERVAL '1 minute', false, true, 'purple')
+                RETURNING id, title, start_at
+            """, (data.type, minutes))
+            row = cur.fetchone()
+            conn.commit()
+            return {'id': row['id'], 'title': row['title'], 'start_at': row['start_at'].isoformat()}
+
+@app.get("/smoke/stats")
+def get_smoke_stats():
+    with get_prod_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    title,
+                    COUNT(CASE WHEN (start_at AT TIME ZONE 'Europe/Lisbon')::date = (NOW() AT TIME ZONE 'Europe/Lisbon')::date THEN 1 END)::int AS today,
+                    COUNT(CASE WHEN (start_at AT TIME ZONE 'Europe/Lisbon')::date = (NOW() AT TIME ZONE 'Europe/Lisbon')::date - 1 THEN 1 END)::int AS yesterday,
+                    COUNT(CASE WHEN start_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'Europe/Lisbon') AT TIME ZONE 'Europe/Lisbon' THEN 1 END)::int AS this_week,
+                    COUNT(CASE WHEN start_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Europe/Lisbon') AT TIME ZONE 'Europe/Lisbon' THEN 1 END)::int AS this_month,
+                    COUNT(CASE WHEN start_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Europe/Lisbon') AT TIME ZONE 'Europe/Lisbon' - INTERVAL '1 month'
+                                AND start_at <  DATE_TRUNC('month', NOW() AT TIME ZONE 'Europe/Lisbon') AT TIME ZONE 'Europe/Lisbon' THEN 1 END)::int AS last_month
+                FROM calendar_events
+                WHERE title IN ('cigarrete', 'joint') AND is_local = true
+                GROUP BY title
+            """)
+            rows = cur.fetchall()
+            result = {
+                'cigarrete': {'today': 0, 'yesterday': 0, 'this_week': 0, 'this_month': 0, 'last_month': 0},
+                'joint': {'today': 0, 'yesterday': 0, 'this_week': 0, 'this_month': 0, 'last_month': 0},
+            }
+            for r in rows:
+                result[r['title']] = {
+                    'today': r['today'], 'yesterday': r['yesterday'],
+                    'this_week': r['this_week'], 'this_month': r['this_month'], 'last_month': r['last_month'],
+                }
+            return result
