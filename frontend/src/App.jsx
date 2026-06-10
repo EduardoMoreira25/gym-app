@@ -141,7 +141,7 @@ export default function App() {
             <ChevronLeft size={20} color="var(--text-muted)" />
           </button>
         )}
-        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem', letterSpacing: '0.1em', color: 'var(--text-muted)', marginRight: 'auto' }}>
+        <span onClick={() => setView('list')} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem', letterSpacing: '0.1em', color: 'var(--text-muted)', marginRight: 'auto', cursor: 'pointer' }}>
           edu<span style={{ color: 'var(--orange)', fontWeight: 500 }}>Gym</span>
         </span>
         {view === 'list' && (
