@@ -165,7 +165,7 @@ export default function App() {
               {[
                 { label: 'Exercise Config', target: 'config' },
                 { label: 'Analytics', target: 'analytics' },
-                { label: 'Smoking Log', target: 'smoking' },
+                { label: 'Nutrition', target: 'nutrition' },
               ].map(({ label, target }) => (
                 <button
                   key={target}
@@ -328,7 +328,7 @@ export default function App() {
           <WorkoutDetail workout={selectedWorkout} onDelete={() => deleteWorkout(selectedWorkout.id)} formatDate={formatDate} />
         )}
         {view === 'config' && <ExerciseConfig />}
-        {view === 'smoking' && <SmokingLog />}
+        {view === 'nutrition' && <NutritionPage />}
         {view === 'analytics' && <Analytics onWeekClick={({ from, to }) => {
           setFilterFrom(from)
           setFilterTo(to)
@@ -946,6 +946,32 @@ function ExerciseConfig() {
 }
 
 function Analytics({ onWeekClick }) {
+  const [tab, setTab] = useState('fitness')
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+        {[{ key: 'fitness', label: 'Fitness' }, { key: 'nutrition', label: 'Nutrition' }].map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            style={btn({
+              background: tab === key ? 'var(--orange)' : 'var(--surface)',
+              color: tab === key ? 'white' : 'var(--text-muted)',
+              border: `1px solid ${tab === key ? 'var(--orange)' : 'var(--border)'}`,
+              padding: '0.45rem 1.1rem',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: '0.8rem',
+            })}
+          >{label}</button>
+        ))}
+      </div>
+      {tab === 'fitness' && <FitnessAnalytics onWeekClick={onWeekClick} />}
+      {tab === 'nutrition' && <NutritionAnalytics />}
+    </div>
+  )
+}
+
+function FitnessAnalytics({ onWeekClick }) {
   const [range, setRange] = useState(8)
   const [rawVolume, setRawVolume] = useState([])
   const [freqData, setFreqData] = useState([])
@@ -1261,78 +1287,330 @@ function Analytics({ onWeekClick }) {
   )
 }
 
-function SmokingLog() {
-  const [stats, setStats] = useState(null)
-  const [logging, setLogging] = useState(null)
-  const [flash, setFlash] = useState(null)
+const stripMealTime = (raw) => raw.replace(/^\s*\d{1,2}:\d{2}\s*,?\s*/, '')
 
-  const loadStats = () => axios.get(`${API}/smoke/stats`).then(r => setStats(r.data))
+function MealForm({ initial, onSave, onCancel, saveLabel = 'Save' }) {
+  const [f, setF] = useState(initial)
+  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }))
+  const numField = (label, key) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <label style={{ fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>{label}</label>
+      <input type="number" step="0.01" value={f[key] ?? ''} onChange={e => set(key, e.target.value)}
+        style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.5rem', color: 'var(--text)', fontSize: '0.82rem' }} />
+    </div>
+  )
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.6rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <label style={{ fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>MEAL</label>
+        <input type="text" value={f.description} onChange={e => set('description', e.target.value)}
+          style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.5rem', color: 'var(--text)', fontSize: '0.82rem' }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+        {numField('CALORIES (kcal)', 'calories')}
+        {numField('PROTEIN (g)', 'protein_g')}
+        {numField('CARBS (g)', 'carbs_g')}
+        {numField('FAT (g)', 'fat_g')}
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+        <button onClick={onCancel} style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', fontSize: '0.8rem', padding: '0.35rem 0.85rem' })}>Cancel</button>
+        <button onClick={() => onSave(f)} disabled={!f.description.trim()}
+          style={btn({ background: 'var(--orange)', color: 'white', fontSize: '0.8rem', padding: '0.35rem 0.85rem', opacity: f.description.trim() ? 1 : 0.4 })}>{saveLabel}</button>
+      </div>
+    </div>
+  )
+}
 
-  useEffect(() => { loadStats() }, [])
+function NutritionAnalytics() {
+  const [meals, setMeals] = useState([])
+  const [editingId, setEditingId] = useState(null)
+  const [saving, setSaving] = useState(false)
 
-  const log = async (type) => {
-    setLogging(type)
-    await axios.post(`${API}/smoke`, { type })
-    await loadStats()
-    setLogging(null)
-    setFlash(type)
-    setTimeout(() => setFlash(null), 1500)
+  const load = () => axios.get(`${API}/nutrition/meals`, { params: { days: 7 } }).then(r => setMeals(r.data))
+  useEffect(() => { load() }, [])
+
+  const saveEdit = async (id, f) => {
+    setSaving(true)
+    await axios.patch(`${API}/nutrition/meals/${id}`, {
+      raw_message: f.description,
+      total_calories: f.calories !== '' ? +f.calories : null,
+      total_protein_g: f.protein_g !== '' ? +f.protein_g : null,
+      total_carbs_g: f.carbs_g !== '' ? +f.carbs_g : null,
+      total_fat_g: f.fat_g !== '' ? +f.fat_g : null,
+    })
+    setSaving(false)
+    setEditingId(null)
+    load()
   }
 
-  const smokeCard = (type, label, duration) => (
-    <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <div>
-        <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '1rem', marginBottom: '0.2rem' }}>{label}</div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>logs {duration} min event · purple</div>
-      </div>
-      <button
-        onClick={() => log(type)}
-        disabled={!!logging}
-        style={btn({
-          background: flash === type ? '#7d3c98' : '#9b59b6',
-          color: 'white',
-          fontSize: '0.875rem',
-          padding: '0.5rem 1.4rem',
-          opacity: logging && logging !== type ? 0.5 : 1,
-          transition: 'background 0.3s',
-        })}
-      >
-        {logging === type ? '...' : flash === type ? 'Saved' : 'Log'}
-      </button>
-    </div>
-  )
+  const deleteMeal = async (id) => {
+    if (!window.confirm('Delete this meal?')) return
+    await axios.delete(`${API}/nutrition/meals/${id}`)
+    load()
+  }
 
-  const statTile = (label, value) => (
-    <div style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.6rem 0.4rem', textAlign: 'center' }}>
-      <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text)' }}>{value ?? 0}</div>
-      <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', marginTop: '0.15rem' }}>{label}</div>
-    </div>
-  )
+  const todayStr = toLocalDateStr(new Date())
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    return toLocalDateStr(d)
+  })
 
-  const statGroup = (heading, data) => (
-    <div>
-      <div style={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>{heading}</div>
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        {statTile('TODAY', data?.today)}
-        {statTile('YESTERDAY', data?.yesterday)}
-        {statTile('THIS WEEK', data?.this_week)}
-        {statTile('THIS MONTH', data?.this_month)}
-        {statTile('LAST MONTH', data?.last_month)}
-      </div>
-    </div>
-  )
+  const fmtDayHeader = (ds) => {
+    const [y, m, d] = ds.split('-').map(Number)
+    return new Date(y, m - 1, d).toLocaleString('en', { weekday: 'short', month: 'short', day: 'numeric' })
+  }
+
+  const mealsByDay = (ds) => meals
+    .filter(meal => meal.eaten_at?.slice(0, 10) === ds)
+    .sort((a, b) => a.eaten_at.localeCompare(b.eaten_at))
+
+  const dayTotals = (dayMeals) => dayMeals.reduce((acc, m) => ({
+    calories: acc.calories + (m.total_calories ?? 0),
+    protein_g: acc.protein_g + (m.total_protein_g ?? 0),
+    carbs_g: acc.carbs_g + (m.total_carbs_g ?? 0),
+    fat_g: acc.fat_g + (m.total_fat_g ?? 0),
+  }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div style={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>SMOKING LOG</div>
-      {smokeCard('cigarrete', 'Cigarette', 5)}
-      {smokeCard('joint', 'Joint', 15)}
-      <div style={card}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-          {statGroup('CIGARETTES', stats?.cigarrete)}
-          {statGroup('JOINTS', stats?.joint)}
-        </div>
+      {days.map(ds => {
+        const dayMeals = mealsByDay(ds)
+        const totals = dayTotals(dayMeals)
+        return (
+          <div key={ds} style={card}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', color: 'var(--text)', fontWeight: 600 }}>{fmtDayHeader(ds)}</div>
+              {ds === todayStr && (
+                <span style={{ fontSize: '0.62rem', fontFamily: 'JetBrains Mono, monospace', background: 'rgba(224,123,84,0.15)', color: 'var(--orange)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>TODAY</span>
+              )}
+              {dayMeals.length > 0 && (
+                <div style={{ marginLeft: 'auto', fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
+                  <span style={{ color: 'var(--orange)', fontWeight: 600 }}>{Math.round(totals.calories)} kcal</span>
+                  {' · '}{totals.protein_g.toFixed(1)}p · {totals.carbs_g.toFixed(1)}c · {totals.fat_g.toFixed(1)}f
+                </div>
+              )}
+            </div>
+            {dayMeals.length === 0 ? (
+              <div style={{ fontSize: '0.75rem', color: 'var(--border)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', padding: '0.75rem 0' }}>
+                No meals logged
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {dayMeals.map(meal => (
+                  <div key={meal.id} style={{ borderTop: '1px solid var(--border)', paddingTop: '0.6rem' }}>
+                    {editingId === meal.id ? (
+                      <MealForm
+                        initial={{
+                          description: stripMealTime(meal.raw_message),
+                          calories: meal.total_calories ?? '',
+                          protein_g: meal.total_protein_g ?? '',
+                          carbs_g: meal.total_carbs_g ?? '',
+                          fat_g: meal.total_fat_g ?? '',
+                        }}
+                        onSave={f => saveEdit(meal.id, f)}
+                        onCancel={() => setEditingId(null)}
+                        saveLabel={saving ? 'Saving...' : 'Save'}
+                      />
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem' }}>
+                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: 'var(--text-muted)', minWidth: '38px', paddingTop: '0.1rem' }}>
+                          {meal.eaten_at?.slice(11, 16)}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--text)' }}>{stripMealTime(meal.raw_message)}</div>
+                          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', marginTop: '0.2rem' }}>
+                            {meal.total_calories != null ? `${meal.total_calories} kcal` : '— kcal'}
+                            {meal.total_protein_g != null && ` · ${meal.total_protein_g}p`}
+                            {meal.total_carbs_g != null && ` · ${meal.total_carbs_g}c`}
+                            {meal.total_fat_g != null && ` · ${meal.total_fat_g}f`}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.35rem', flexShrink: 0 }}>
+                          <button onClick={() => setEditingId(meal.id)}
+                            style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', fontSize: '0.7rem', padding: '0.25rem 0.55rem' })}>
+                            Edit
+                          </button>
+                          <button onClick={() => deleteMeal(meal.id)}
+                            style={btn({ background: 'var(--surface-hover)', color: '#e05555', border: '1px solid var(--border)', fontSize: '0.7rem', padding: '0.25rem 0.55rem' })}>
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const SOURCES = ['manual', 'llm_estimate', 'usda', 'openfoodfacts', 'other']
+
+const emptyFood = () => ({ food_name: '', calories: '', protein_g: '', carbs_g: '', fat_g: '', serving_description: '1 porção', serving_g: '100', source: 'manual' })
+
+function FoodForm({ initial, onSave, onCancel, saveLabel = 'Save' }) {
+  const [f, setF] = useState(initial)
+  const set = (k, v) => setF(prev => ({ ...prev, [k]: v }))
+  const numField = (label, key) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <label style={{ fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>{label}</label>
+      <input type="number" step="0.01" value={f[key] ?? ''} onChange={e => set(key, e.target.value)}
+        style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.5rem', color: 'var(--text)', fontSize: '0.82rem' }} />
+    </div>
+  )
+  const txtField = (label, key) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <label style={{ fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>{label}</label>
+      <input type="text" value={f[key] ?? ''} onChange={e => set(key, e.target.value)}
+        style={{ width: '100%', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.5rem', color: 'var(--text)', fontSize: '0.82rem' }} />
+    </div>
+  )
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.75rem' }}>
+      {txtField('FOOD NAME', 'food_name')}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+        {numField('CALORIES (kcal)', 'calories')}
+        {numField('PROTEIN (g)', 'protein_g')}
+        {numField('CARBS (g)', 'carbs_g')}
+        {numField('FAT (g)', 'fat_g')}
+        {numField('SERVING (g)', 'serving_g')}
+        {txtField('SERVING DESC', 'serving_description')}
       </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <label style={{ fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>SOURCE</label>
+        <select value={f.source ?? 'manual'} onChange={e => set('source', e.target.value)}
+          style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.5rem', color: 'var(--text)', fontSize: '0.82rem' }}>
+          {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </div>
+      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
+        <button onClick={onCancel} style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', fontSize: '0.8rem', padding: '0.35rem 0.85rem' })}>Cancel</button>
+        <button onClick={() => onSave(f)} disabled={!f.food_name.trim()}
+          style={btn({ background: 'var(--orange)', color: 'white', fontSize: '0.8rem', padding: '0.35rem 0.85rem', opacity: f.food_name.trim() ? 1 : 0.4 })}>{saveLabel}</button>
+      </div>
+    </div>
+  )
+}
+
+function NutritionPage() {
+  const [foods, setFoods] = useState([])
+  const [editingId, setEditingId] = useState(null)
+  const [adding, setAdding] = useState(false)
+  const [search, setSearch] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const load = () => axios.get(`${API}/nutrition/foods`).then(r => setFoods(r.data))
+  useEffect(() => { load() }, [])
+
+  const saveEdit = async (id, f) => {
+    setSaving(true)
+    await axios.patch(`${API}/nutrition/foods/${id}`, {
+      food_name: f.food_name, calories: f.calories ? +f.calories : null,
+      protein_g: f.protein_g ? +f.protein_g : null, carbs_g: f.carbs_g ? +f.carbs_g : null,
+      fat_g: f.fat_g ? +f.fat_g : null, serving_description: f.serving_description,
+      serving_g: f.serving_g ? +f.serving_g : null, source: f.source,
+    })
+    setSaving(false)
+    setEditingId(null)
+    load()
+  }
+
+  const saveNew = async (f) => {
+    setSaving(true)
+    await axios.post(`${API}/nutrition/foods`, {
+      food_name: f.food_name, calories: f.calories ? +f.calories : null,
+      protein_g: f.protein_g ? +f.protein_g : null, carbs_g: f.carbs_g ? +f.carbs_g : null,
+      fat_g: f.fat_g ? +f.fat_g : null, serving_description: f.serving_description,
+      serving_g: f.serving_g ? +f.serving_g : null, source: f.source,
+    })
+    setSaving(false)
+    setAdding(false)
+    load()
+  }
+
+  const macroChip = (label, val, color) => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '48px' }}>
+      <span style={{ fontSize: '0.82rem', fontWeight: 700, color }}>{val != null ? Number(val).toFixed(1) : '—'}</span>
+      <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>{label}</span>
+    </div>
+  )
+
+  const filtered = foods.filter(f => f.food_name.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>NUTRITION</div>
+
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <input type="text" placeholder="Search foods..." value={search} onChange={e => setSearch(e.target.value)}
+          style={{ flex: 1, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', padding: '0.5rem 0.75rem', color: 'var(--text)', fontSize: '0.875rem' }} />
+        {!adding && (
+          <button onClick={() => { setAdding(true); setEditingId(null) }}
+            style={btn({ background: 'var(--orange)', color: 'white', fontSize: '0.8rem', padding: '0.5rem 0.85rem', whiteSpace: 'nowrap' })}>
+            <Plus size={14} /> Add Food
+          </button>
+        )}
+      </div>
+
+      {adding && (
+        <div style={card}>
+          <div style={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--orange)', letterSpacing: '0.08em' }}>NEW FOOD</div>
+          <FoodForm initial={emptyFood()} onSave={saveNew} onCancel={() => setAdding(false)} saveLabel={saving ? 'Saving...' : 'Save'} />
+        </div>
+      )}
+
+      {filtered.map(food => (
+        <div key={food.id} style={card}>
+          {editingId === food.id ? (
+            <>
+              <div style={{ fontSize: '0.7rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--orange)', letterSpacing: '0.08em' }}>EDITING</div>
+              <FoodForm
+                initial={{ ...food, calories: food.calories ?? '', protein_g: food.protein_g ?? '', carbs_g: food.carbs_g ?? '', fat_g: food.fat_g ?? '', serving_g: food.serving_g ?? '' }}
+                onSave={f => saveEdit(food.id, f)}
+                onCancel={() => setEditingId(null)}
+                saveLabel={saving ? 'Saving...' : 'Save'}
+              />
+            </>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '0.92rem', marginBottom: '0.45rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {food.food_name}
+                </div>
+                <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  {macroChip('kcal', food.calories, 'var(--orange)')}
+                  {macroChip('prot', food.protein_g, '#4a9e7a')}
+                  {macroChip('carbs', food.carbs_g, '#6a8fd4')}
+                  {macroChip('fat', food.fat_g, '#d4b45a')}
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', marginLeft: 'auto' }}>
+                    {food.serving_g}g · {food.serving_description}
+                  </div>
+                </div>
+                <div style={{ marginTop: '0.4rem' }}>
+                  <span style={{ fontSize: '0.62rem', fontFamily: 'JetBrains Mono, monospace', background: 'var(--surface-hover)', color: 'var(--text-muted)', padding: '0.15rem 0.45rem', borderRadius: '4px' }}>
+                    {food.source}
+                  </span>
+                </div>
+              </div>
+              <button onClick={() => { setEditingId(food.id); setAdding(false) }}
+                style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', fontSize: '0.75rem', padding: '0.3rem 0.65rem' })}>
+                Edit
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {filtered.length === 0 && !adding && (
+        <div style={{ textAlign: 'center', color: 'var(--border)', fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', paddingTop: '2rem' }}>
+          {search ? 'No foods match your search' : 'No foods in knowledge base yet'}
+        </div>
+      )}
     </div>
   )
 }

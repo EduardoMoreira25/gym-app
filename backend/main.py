@@ -22,9 +22,9 @@ DB = {
     "password": os.getenv("DB_PASSWORD", ""),
 }
 
-PROD_DB = {
+NUTRITION_DB = {
     "host": os.getenv("DB_HOST", "172.21.0.1"),
-    "dbname": "productivity",
+    "dbname": "nutrition_bot",
     "user": os.getenv("DB_USER", "miendes"),
     "password": os.getenv("DB_PASSWORD", ""),
 }
@@ -32,8 +32,8 @@ PROD_DB = {
 def get_conn():
     return psycopg2.connect(**DB, cursor_factory=RealDictCursor)
 
-def get_prod_conn():
-    return psycopg2.connect(**PROD_DB, cursor_factory=RealDictCursor)
+def get_nutrition_conn():
+    return psycopg2.connect(**NUTRITION_DB, cursor_factory=RealDictCursor)
 
 # --- Models ---
 class WorkoutTypeCreate(BaseModel):
@@ -359,51 +359,139 @@ def delete_workout(workout_id: int):
             conn.commit()
             return {"message": "Deleted"}
 
-# --- Smoking Log ---
-class SmokeLog(BaseModel):
-    type: str  # 'cigarrete' or 'joint'
+# --- Nutrition Knowledge Base ---
+class FoodCreate(BaseModel):
+    food_name: str
+    calories: Optional[float] = None
+    protein_g: Optional[float] = None
+    carbs_g: Optional[float] = None
+    fat_g: Optional[float] = None
+    serving_description: Optional[str] = '1 porção'
+    serving_g: Optional[float] = 100
+    source: Optional[str] = 'manual'
 
-@app.post("/smoke")
-def log_smoke(data: SmokeLog):
-    if data.type not in ('cigarrete', 'joint'):
-        raise HTTPException(status_code=400, detail="type must be 'cigarrete' or 'joint'")
-    minutes = 5 if data.type == 'cigarrete' else 15
-    with get_prod_conn() as conn:
+class FoodUpdate(BaseModel):
+    food_name: Optional[str] = None
+    calories: Optional[float] = None
+    protein_g: Optional[float] = None
+    carbs_g: Optional[float] = None
+    fat_g: Optional[float] = None
+    serving_description: Optional[str] = None
+    serving_g: Optional[float] = None
+    source: Optional[str] = None
+
+def _food_row(r):
+    return {
+        'id': r['id'],
+        'food_name': r['food_name'],
+        'food_name_lower': r['food_name_lower'],
+        'calories': float(r['calories']) if r['calories'] is not None else None,
+        'protein_g': float(r['protein_g']) if r['protein_g'] is not None else None,
+        'carbs_g': float(r['carbs_g']) if r['carbs_g'] is not None else None,
+        'fat_g': float(r['fat_g']) if r['fat_g'] is not None else None,
+        'serving_description': r['serving_description'],
+        'serving_g': float(r['serving_g']) if r['serving_g'] is not None else None,
+        'source': r['source'],
+    }
+
+@app.get("/nutrition/foods")
+def get_foods():
+    with get_nutrition_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM knowledge_base ORDER BY food_name")
+            return [_food_row(r) for r in cur.fetchall()]
+
+@app.post("/nutrition/foods")
+def create_food(data: FoodCreate):
+    with get_nutrition_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO calendar_events (id, title, start_at, end_at, is_all_day, is_local, color)
-                VALUES (gen_random_uuid()::text, %s, NOW(), NOW() + %s * INTERVAL '1 minute', false, true, 'purple')
-                RETURNING id, title, start_at
-            """, (data.type, minutes))
+                INSERT INTO knowledge_base
+                    (food_name, food_name_lower, calories, protein_g, carbs_g, fat_g, serving_description, serving_g, source)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *
+            """, (data.food_name, data.food_name.lower(), data.calories, data.protein_g,
+                  data.carbs_g, data.fat_g, data.serving_description, data.serving_g, data.source))
             row = cur.fetchone()
             conn.commit()
-            return {'id': row['id'], 'title': row['title'], 'start_at': row['start_at'].isoformat()}
+            return _food_row(row)
 
-@app.get("/smoke/stats")
-def get_smoke_stats():
-    with get_prod_conn() as conn:
+@app.patch("/nutrition/foods/{food_id}")
+def update_food(food_id: int, data: FoodUpdate):
+    with get_nutrition_conn() as conn:
+        with conn.cursor() as cur:
+            fields, values = [], []
+            for col in ('food_name', 'calories', 'protein_g', 'carbs_g', 'fat_g', 'serving_description', 'serving_g', 'source'):
+                val = getattr(data, col)
+                if val is not None:
+                    fields.append(f"{col} = %s")
+                    values.append(val)
+            if data.food_name is not None:
+                fields.append("food_name_lower = %s")
+                values.append(data.food_name.lower())
+            if not fields:
+                raise HTTPException(status_code=400, detail="No fields to update")
+            values.append(food_id)
+            cur.execute(f"UPDATE knowledge_base SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Food not found")
+            conn.commit()
+            return _food_row(row)
+
+# --- Nutrition Meals (daily log) ---
+class MealUpdate(BaseModel):
+    raw_message: Optional[str] = None
+    total_calories: Optional[float] = None
+    total_protein_g: Optional[float] = None
+    total_carbs_g: Optional[float] = None
+    total_fat_g: Optional[float] = None
+
+def _meal_row(r):
+    return {
+        'id': r['id'],
+        'raw_message': r['raw_message'],
+        'total_calories': float(r['total_calories']) if r['total_calories'] is not None else None,
+        'total_protein_g': float(r['total_protein_g']) if r['total_protein_g'] is not None else None,
+        'total_carbs_g': float(r['total_carbs_g']) if r['total_carbs_g'] is not None else None,
+        'total_fat_g': float(r['total_fat_g']) if r['total_fat_g'] is not None else None,
+        'eaten_at': r['eaten_at'].isoformat() if r['eaten_at'] else None,
+    }
+
+@app.get("/nutrition/meals")
+def get_meals(days: int = 7):
+    with get_nutrition_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT
-                    title,
-                    COUNT(CASE WHEN (start_at AT TIME ZONE 'Europe/Lisbon')::date = (NOW() AT TIME ZONE 'Europe/Lisbon')::date THEN 1 END)::int AS today,
-                    COUNT(CASE WHEN (start_at AT TIME ZONE 'Europe/Lisbon')::date = (NOW() AT TIME ZONE 'Europe/Lisbon')::date - 1 THEN 1 END)::int AS yesterday,
-                    COUNT(CASE WHEN start_at >= DATE_TRUNC('week', NOW() AT TIME ZONE 'Europe/Lisbon') AT TIME ZONE 'Europe/Lisbon' THEN 1 END)::int AS this_week,
-                    COUNT(CASE WHEN start_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Europe/Lisbon') AT TIME ZONE 'Europe/Lisbon' THEN 1 END)::int AS this_month,
-                    COUNT(CASE WHEN start_at >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Europe/Lisbon') AT TIME ZONE 'Europe/Lisbon' - INTERVAL '1 month'
-                                AND start_at <  DATE_TRUNC('month', NOW() AT TIME ZONE 'Europe/Lisbon') AT TIME ZONE 'Europe/Lisbon' THEN 1 END)::int AS last_month
-                FROM calendar_events
-                WHERE title IN ('cigarrete', 'joint') AND is_local = true
-                GROUP BY title
-            """)
-            rows = cur.fetchall()
-            result = {
-                'cigarrete': {'today': 0, 'yesterday': 0, 'this_week': 0, 'this_month': 0, 'last_month': 0},
-                'joint': {'today': 0, 'yesterday': 0, 'this_week': 0, 'this_month': 0, 'last_month': 0},
-            }
-            for r in rows:
-                result[r['title']] = {
-                    'today': r['today'], 'yesterday': r['yesterday'],
-                    'this_week': r['this_week'], 'this_month': r['this_month'], 'last_month': r['last_month'],
-                }
-            return result
+                SELECT * FROM meals
+                WHERE eaten_at::date >= CURRENT_DATE - (%s - 1)
+                ORDER BY eaten_at DESC
+            """, (days,))
+            return [_meal_row(r) for r in cur.fetchall()]
+
+@app.patch("/nutrition/meals/{meal_id}")
+def update_meal(meal_id: int, data: MealUpdate):
+    with get_nutrition_conn() as conn:
+        with conn.cursor() as cur:
+            fields, values = [], []
+            for col in ('raw_message', 'total_calories', 'total_protein_g', 'total_carbs_g', 'total_fat_g'):
+                val = getattr(data, col)
+                if val is not None:
+                    fields.append(f"{col} = %s")
+                    values.append(val)
+            if not fields:
+                raise HTTPException(status_code=400, detail="No fields to update")
+            values.append(meal_id)
+            cur.execute(f"UPDATE meals SET {', '.join(fields)} WHERE id = %s RETURNING *", values)
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Meal not found")
+            conn.commit()
+            return _meal_row(row)
+
+@app.delete("/nutrition/meals/{meal_id}")
+def delete_meal(meal_id: int):
+    with get_nutrition_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM meals WHERE id = %s", (meal_id,))
+            conn.commit()
+            return {"message": "Deleted"}
