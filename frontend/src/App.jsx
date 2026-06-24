@@ -71,6 +71,63 @@ const card = {
 const today = () => localNow().split('T')[0]
 const localNow = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19) }
 
+function Dropdown({ value, onChange, options, placeholder = 'Select...', style }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  const selected = options.find(o => String(o.value) === String(value))
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%', ...style }}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px',
+          padding: '0.5rem 0.65rem', color: selected ? 'var(--text)' : 'var(--text-muted)',
+          fontSize: '0.875rem', fontFamily: 'Space Grotesk, sans-serif', cursor: 'pointer', textAlign: 'left',
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected ? selected.label : placeholder}</span>
+        {open ? <ChevronUp size={15} color="var(--text-muted)" style={{ flexShrink: 0, marginLeft: '0.4rem' }} /> : <ChevronDown size={15} color="var(--text-muted)" style={{ flexShrink: 0, marginLeft: '0.4rem' }} />}
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 50,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px',
+          maxHeight: '260px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+        }}>
+          {options.map((o, i) => (
+            <div
+              key={o.value}
+              onClick={() => { onChange(o.value); setOpen(false) }}
+              style={{
+                padding: '0.6rem 0.75rem', fontSize: '0.85rem',
+                fontFamily: 'Space Grotesk, sans-serif', cursor: 'pointer',
+                color: String(o.value) === String(value) ? 'var(--orange)' : 'var(--text)',
+                background: String(o.value) === String(value) ? 'var(--orange-dim)' : 'transparent',
+                borderBottom: i === options.length - 1 ? 'none' : '1px solid var(--border)',
+              }}
+              onMouseEnter={e => { if (String(o.value) !== String(value)) e.currentTarget.style.background = 'var(--surface-hover)' }}
+              onMouseLeave={e => { if (String(o.value) !== String(value)) e.currentTarget.style.background = 'transparent' }}
+            >
+              {o.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [view, setView] = useState(() => {
@@ -198,11 +255,11 @@ export default function App() {
                 <div style={{ ...card, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
                   <div>
                     <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Type</label>
-                    <select value={filterType} onChange={e => setFilterType(e.target.value)}>
-                      <option value="">All</option>
-                      <option value="ginasio">Ginásio</option>
-                      <option value="caminhada">Caminhada</option>
-                    </select>
+                    <Dropdown
+                      value={filterType}
+                      onChange={setFilterType}
+                      options={[{ value: '', label: 'All' }, { value: 'ginasio', label: 'Ginásio' }, { value: 'caminhada', label: 'Caminhada' }]}
+                    />
                   </div>
                   <div>
                     <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>From</label>
@@ -510,24 +567,25 @@ function GinasioForm({ onSave, onCancel }) {
         {exerciseRows.map((row, rowIdx) => (
           <div key={rowIdx} style={{ borderLeft: '2px solid var(--orange)', paddingLeft: '0.75rem', marginBottom: '1.25rem' }}>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-              <select value={row.exercise_id} onChange={async e => {
-                const exId = e.target.value
-                setExerciseRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, exercise_id: exId } : r))
-                if (exId) {
-                  try {
-                    const res = await axios.get(`${API}/exercises/${exId}/suggested-weight`)
-                    if (res.data.weight_kg !== null) {
-                      setExerciseRows(prev => prev.map((r, i) => i === rowIdx
-                        ? { ...r, sets: r.sets.map(s => ({ ...s, weight_kg: String(res.data.weight_kg) })) }
-                        : r
-                      ))
-                    }
-                  } catch {}
-                }
-              }}>
-                <option value="">Select exercise...</option>
-                {exercises.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-              </select>
+              <Dropdown
+                value={row.exercise_id}
+                placeholder="Select exercise..."
+                options={[{ value: '', label: 'Select exercise...' }, ...exercises.map(e => ({ value: String(e.id), label: e.name }))]}
+                onChange={async exId => {
+                  setExerciseRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, exercise_id: exId } : r))
+                  if (exId) {
+                    try {
+                      const res = await axios.get(`${API}/exercises/${exId}/suggested-weight`)
+                      if (res.data.weight_kg !== null) {
+                        setExerciseRows(prev => prev.map((r, i) => i === rowIdx
+                          ? { ...r, sets: r.sets.map(s => ({ ...s, weight_kg: String(res.data.weight_kg) })) }
+                          : r
+                        ))
+                      }
+                    } catch {}
+                  }
+                }}
+              />
               <button onClick={() => removeExerciseRow(rowIdx)} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
                 <X size={16} color="var(--text-muted)" />
               </button>
@@ -916,14 +974,12 @@ function ExerciseConfig() {
                   )}
                 </div>
                 {/* Muscle group row */}
-                <select
+                <Dropdown
                   value={ex.muscle_group || ''}
-                  onChange={e => updateMuscleGroup(ex.id, e.target.value)}
-                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.4rem', width: '100%' }}
-                >
-                  <option value="">— muscle group —</option>
-                  {MUSCLE_GROUPS.map(mg => <option key={mg} value={mg}>{mg}</option>)}
-                </select>
+                  onChange={mg => updateMuscleGroup(ex.id, mg)}
+                  placeholder="— muscle group —"
+                  options={[{ value: '', label: '— muscle group —' }, ...MUSCLE_GROUPS.map(mg => ({ value: mg, label: mg }))]}
+                />
               </div>
             ))}
           </div>
@@ -1256,10 +1312,13 @@ function FitnessAnalytics({ onWeekClick }) {
       {/* Strength progression */}
       <div style={secCard}>
         <div style={secLabel}>STRENGTH PROGRESSION</div>
-        <select value={progExId} onChange={e => setProgExId(e.target.value)} style={{ marginBottom: '1rem', fontSize: '0.85rem', width: '100%' }}>
-          <option value="">Select an exercise...</option>
-          {allExercises.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </select>
+        <Dropdown
+          value={progExId}
+          onChange={setProgExId}
+          placeholder="Select an exercise..."
+          options={[{ value: '', label: 'Select an exercise...' }, ...allExercises.map(e => ({ value: String(e.id), label: e.name }))]}
+          style={{ marginBottom: '1rem' }}
+        />
         {progExId && progData.length === 0 && (
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center', padding: '1.5rem 0', fontFamily: 'JetBrains Mono, monospace' }}>
             No weighted sets recorded for this exercise
@@ -1483,10 +1542,7 @@ function FoodForm({ initial, onSave, onCancel, saveLabel = 'Save' }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
         <label style={{ fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.06em' }}>SOURCE</label>
-        <select value={f.source ?? 'manual'} onChange={e => set('source', e.target.value)}
-          style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.35rem 0.5rem', color: 'var(--text)', fontSize: '0.82rem' }}>
-          {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <Dropdown value={f.source ?? 'manual'} onChange={v => set('source', v)} options={SOURCES.map(s => ({ value: s, label: s }))} />
       </div>
       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '0.25rem' }}>
         <button onClick={onCancel} style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', fontSize: '0.8rem', padding: '0.35rem 0.85rem' })}>Cancel</button>
