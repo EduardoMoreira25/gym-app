@@ -75,7 +75,7 @@ const card = {
 const today = () => localNow().split('T')[0]
 const localNow = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 19) }
 
-function Dropdown({ value, onChange, options, placeholder = 'Select...', style }) {
+function Dropdown({ value, onChange, options, placeholder = 'Select...', style, flat = false }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -95,9 +95,14 @@ function Dropdown({ value, onChange, options, placeholder = 'Select...', style }
         onClick={() => setOpen(o => !o)}
         style={{
           width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px',
-          padding: '0.5rem 0.65rem', color: selected ? 'var(--text)' : 'var(--text-muted)',
-          fontSize: '0.875rem', fontFamily: 'Space Grotesk, sans-serif', cursor: 'pointer', textAlign: 'left',
+          background: flat ? 'transparent' : 'var(--surface)',
+          border: flat ? 'none' : '1px solid var(--border)',
+          borderRadius: flat ? 0 : '8px',
+          padding: flat ? '0' : '0.5rem 0.65rem',
+          color: selected ? 'var(--text)' : 'var(--text-muted)',
+          fontSize: flat ? '0.95rem' : '0.875rem',
+          fontWeight: flat && selected ? 600 : 400,
+          fontFamily: 'Space Grotesk, sans-serif', cursor: 'pointer', textAlign: 'left',
         }}
       >
         <span style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', overflow: 'hidden', minWidth: 0 }}>
@@ -258,11 +263,6 @@ export default function App() {
         <span onClick={() => setView('list')} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem', letterSpacing: '0.1em', color: 'var(--text-muted)', marginRight: 'auto', cursor: 'pointer' }}>
           edu<span style={{ color: 'var(--orange)', fontWeight: 500 }}>Gym</span>
         </span>
-        {view === 'list' && (
-          <button onClick={() => setView('choose')} style={btn({ background: 'var(--orange)', color: 'white' })}>
-            <Plus size={16} /> New Workout
-          </button>
-        )}
       </header>
 
       {menuOpen && (
@@ -455,29 +455,46 @@ export default function App() {
         {/* CHOOSE TYPE */}
         {view === 'choose' && (
           <div>
-            <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-              Select workout type
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.35rem' }}>New Workout</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>What are you training today?</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <button
                 onClick={() => setView('ginasio')}
-                style={{ ...card, border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', color: 'var(--text)' }}
+                style={{
+                  ...card, border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left',
+                  transition: 'all 0.18s', color: 'var(--text)', padding: '1.5rem',
+                  display: 'flex', alignItems: 'center', gap: '1.25rem',
+                }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--orange)'; e.currentTarget.style.background = 'var(--orange-dim)' }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
               >
-                <Dumbbell size={28} color="var(--orange)" style={{ marginBottom: '0.75rem' }} />
-                <div style={{ fontWeight: 500, color: 'var(--text)' }}>Ginásio</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Push · Pull · Legs</div>
+                <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'var(--orange-dim2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Dumbbell size={26} color="var(--orange)" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text)' }}>Ginásio</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Push · Pull · Legs</div>
+                </div>
+                <ChevronDown size={18} color="var(--text-muted)" style={{ marginLeft: 'auto', transform: 'rotate(-90deg)', flexShrink: 0 }} />
               </button>
               <button
                 onClick={() => setView('caminhada')}
-                style={{ ...card, border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s', color: 'var(--text)' }}
+                style={{
+                  ...card, border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left',
+                  transition: 'all 0.18s', color: 'var(--text)', padding: '1.5rem',
+                  display: 'flex', alignItems: 'center', gap: '1.25rem',
+                }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = CAMINHADA_COLOR; e.currentTarget.style.background = 'rgba(200,200,200,0.05)' }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
               >
-                <Footprints size={28} color={CAMINHADA_COLOR} style={{ marginBottom: '0.75rem' }} />
-                <div style={{ fontWeight: 500, color: 'var(--text)' }}>Caminhada</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Distance · Time · Notes</div>
+                <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(200,200,200,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <Footprints size={26} color={CAMINHADA_COLOR} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--text)' }}>Caminhada</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>Distance · Time · Notes</div>
+                </div>
+                <ChevronDown size={18} color="var(--text-muted)" style={{ marginLeft: 'auto', transform: 'rotate(-90deg)', flexShrink: 0 }} />
               </button>
             </div>
           </div>
@@ -498,6 +515,23 @@ export default function App() {
           setView('list')
         }} />}
       </div>
+
+      {/* FAB — new workout */}
+      {view === 'list' && (
+        <button
+          onClick={() => setView('choose')}
+          style={{
+            position: 'fixed', bottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))', right: '1.5rem',
+            width: '58px', height: '58px', borderRadius: '50%',
+            background: 'var(--orange)', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 20px rgba(232,115,42,0.45)',
+            zIndex: 20,
+          }}
+        >
+          <Plus size={26} color="white" strokeWidth={2.5} />
+        </button>
+      )}
     </div>
   )
 }
@@ -674,80 +708,95 @@ function GinasioForm({ onSave, onCancel }) {
     onCancel()
   }
 
+  // Build grouped exercise options once (shared across rows)
+  const groupedExOpts = (() => {
+    const byCategory = {}
+    const uncategorized = []
+    exercises.forEach(e => {
+      const cat = e.muscle_group_category_name
+      if (cat) { if (!byCategory[cat]) byCategory[cat] = []; byCategory[cat].push(e) }
+      else uncategorized.push(e)
+    })
+    const opts = [{ value: '', label: 'Select exercise...' }]
+    Object.keys(CATEGORY_COLORS).forEach(cat => {
+      if (byCategory[cat]?.length) {
+        opts.push({ isGroup: true, label: cat, color: CATEGORY_COLORS[cat] })
+        byCategory[cat].forEach(e => opts.push({ value: String(e.id), label: e.name, dot: CATEGORY_COLORS[cat] }))
+      }
+    })
+    if (uncategorized.length) {
+      opts.push({ isGroup: true, label: 'Other', color: '#8a8a8a' })
+      uncategorized.forEach(e => opts.push({ value: String(e.id), label: e.name }))
+    }
+    return opts
+  })()
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <div style={card}>
-        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem', fontFamily: 'JetBrains Mono, monospace' }}>WORKOUT DATE</label>
-        <input type="date" value={startedAt.split('T')[0]} onChange={e => setStartedAt(prev => e.target.value + (prev.includes('T') ? prev.substring(prev.indexOf('T')) : ''))} />
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+
+      {/* Date row — edge-to-edge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.85rem 1rem', borderBottom: '1px solid var(--border)' }}>
+        <Clock size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+        <input type="date" value={startedAt.split('T')[0]}
+          onChange={e => setStartedAt(prev => e.target.value + (prev.includes('T') ? prev.substring(prev.indexOf('T')) : ''))}
+          style={{ flex: 1, background: 'transparent', border: 'none', boxShadow: 'none', padding: '0', fontSize: '0.95rem', color: 'var(--text)' }} />
       </div>
 
-      <div style={card}>
-        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem', fontFamily: 'JetBrains Mono, monospace' }}>WORKOUT TYPE</label>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
-          {workoutTypes.map(t => (
-            <button
-              key={t.id}
-              onClick={() => {
-                setSelectedType(t.id)
-                setExerciseRows([{ exercise_id: '', sets: [{ weight_kg: '', reps: '' }] }])
-                if (!startedAt.includes('T')) setStartedAt(localNow())
-                startWatch()
-              }}
-              style={(() => {
-                const c = WORKOUT_TYPE_COLORS[t.name] || 'var(--orange)'
-                return {
-                  padding: '0.4rem 0.9rem', borderRadius: '20px', border: '1px solid',
-                  borderColor: selectedType == t.id ? c : 'var(--border)',
-                  background: selectedType == t.id ? c + '22' : 'transparent',
-                  color: selectedType == t.id ? c : 'var(--text-muted)',
-                  fontSize: '0.85rem'
-                }
-              })()}
-            >
-              {t.name}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <input placeholder="Add new type..." value={newTypeName} onChange={e => setNewTypeName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addWorkoutType()} />
-          <button onClick={addWorkoutType} style={btn({ background: 'var(--orange)', color: 'white', flexShrink: 0 })}><Plus size={14} /></button>
-        </div>
-      </div>
-
-      <div style={card}>
-        <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.75rem', fontFamily: 'JetBrains Mono, monospace' }}>EXERCISES</label>
-        {exerciseRows.map((row, rowIdx) => {
-          const selEx = exercises.find(e => String(e.id) === String(row.exercise_id))
-          const rowCatColor = selEx?.muscle_group_category_name
-            ? (CATEGORY_COLORS[selEx.muscle_group_category_name] || 'var(--orange)')
-            : 'var(--orange)'
-
-          const byCategory = {}
-          const uncategorized = []
-          exercises.forEach(e => {
-            const cat = e.muscle_group_category_name
-            if (cat) { if (!byCategory[cat]) byCategory[cat] = []; byCategory[cat].push(e) }
-            else uncategorized.push(e)
-          })
-          const groupedOpts = [{ value: '', label: 'Select exercise...' }]
-          Object.keys(CATEGORY_COLORS).forEach(cat => {
-            if (byCategory[cat]?.length) {
-              groupedOpts.push({ isGroup: true, label: cat, color: CATEGORY_COLORS[cat] })
-              byCategory[cat].forEach(e => groupedOpts.push({ value: String(e.id), label: e.name, dot: CATEGORY_COLORS[cat] }))
-            }
-          })
-          if (uncategorized.length) {
-            groupedOpts.push({ isGroup: true, label: 'Other', color: '#8a8a8a' })
-            uncategorized.forEach(e => groupedOpts.push({ value: String(e.id), label: e.name }))
-          }
-
+      {/* Workout type grid — 3 equal columns with dividers */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${workoutTypes.length}, 1fr)`, borderBottom: '1px solid var(--border)' }}>
+        {workoutTypes.map((t, i) => {
+          const sel = selectedType == t.id
           return (
-          <div key={rowIdx} style={{ borderLeft: `2px solid ${rowCatColor}`, paddingLeft: '0.75rem', marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+            <button key={t.id} onClick={() => {
+              setSelectedType(t.id)
+              setExerciseRows([{ exercise_id: '', sets: [{ weight_kg: '', reps: '' }] }])
+              if (!startedAt.includes('T')) setStartedAt(localNow())
+              startWatch()
+            }} style={{
+              padding: '1rem 0.5rem',
+              background: sel ? 'rgba(255,255,255,0.06)' : 'transparent',
+              border: 'none',
+              borderLeft: i > 0 ? '1px solid var(--border)' : 'none',
+              color: sel ? 'var(--text)' : 'var(--text-muted)',
+              fontSize: '0.9rem', fontWeight: sel ? 600 : 400,
+              letterSpacing: sel ? '0' : '0',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.35rem',
+            }}>
+              <WorkoutTypeIcon typeName={t.name} size={18} />
+              <span>{t.name}</span>
+              {sel && <div style={{ width: '20px', height: '2px', background: 'white', borderRadius: '1px' }} />}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Add workout type — collapsed, edge-to-edge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 1rem', borderBottom: '1px solid var(--border)' }}>
+        <input placeholder="Add workout type..." value={newTypeName}
+          onChange={e => setNewTypeName(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addWorkoutType()}
+          style={{ flex: 1, background: 'transparent', border: 'none', boxShadow: 'none', padding: '0', fontSize: '0.8rem', color: 'var(--text-muted)' }} />
+        <button onClick={addWorkoutType} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}>
+          <Plus size={15} />
+        </button>
+      </div>
+
+      {/* Exercise sections — fully flat, edge-to-edge */}
+      <div style={{ marginLeft: '-1rem', marginRight: '-1rem' }}>
+        {exerciseRows.map((row, rowIdx) => (
+          <div key={rowIdx}>
+            {/* Exercise name — single unified bar */}
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              background: 'var(--surface)',
+              padding: '0.75rem 1rem',
+              borderBottom: '1px solid var(--border)',
+            }}>
               <Dropdown
+                flat
                 value={row.exercise_id}
                 placeholder="Select exercise..."
-                options={groupedOpts}
+                options={groupedExOpts}
                 onChange={async exId => {
                   setExerciseRows(prev => prev.map((r, i) => i === rowIdx ? { ...r, exercise_id: exId } : r))
                   if (exId) {
@@ -763,106 +812,143 @@ function GinasioForm({ onSave, onCancel }) {
                   }
                 }}
               />
-              <button onClick={() => removeExerciseRow(rowIdx)} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
-                <X size={16} color="var(--text-muted)" />
+              <div style={{ width: '1px', height: '20px', background: 'var(--border)', flexShrink: 0, margin: '0 0.75rem' }} />
+              <button onClick={() => removeExerciseRow(rowIdx)} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: '0.1rem', display: 'flex', alignItems: 'center' }}>
+                <X size={15} color="var(--text-muted)" />
               </button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {row.sets.map((s, setIdx) => (
-                <div key={setIdx} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', width: '28px', flexShrink: 0 }}>S{setIdx + 1}</span>
-                  <input type="number" placeholder="kg" value={s.weight_kg} onChange={e => updateSet(rowIdx, setIdx, 'weight_kg', e.target.value)} style={{ width: '62px' }} />
-                  <input type="number" placeholder="reps" value={s.reps} onChange={e => updateSet(rowIdx, setIdx, 'reps', e.target.value)} style={{ width: '58px' }} />
-                  {(!s.reps || s.reps === '') && [8, 10, 12].map(rep => (
-                    <button key={rep} onClick={() => updateSet(rowIdx, setIdx, 'reps', String(rep))}
-                      style={{
-                        width: '28px', height: '28px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        color: '#666',
-                        borderRadius: '6px',
-                        fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace',
-                        cursor: 'pointer', flexShrink: 0,
-                      }}>
-                      {rep}
-                    </button>
-                  ))}
-                  {row.sets.length > 1 && (
-                    <button onClick={() => removeSet(rowIdx, setIdx)} style={{ background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
-                      <X size={13} color="var(--text-muted)" />
-                    </button>
-                  )}
-                </div>
+
+            {/* Column headers strip */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: '28px 64px 12px 60px 148px 24px', gap: '0 0.3rem',
+              alignItems: 'center', padding: '0.3rem 0.75rem',
+              background: 'var(--surface)',
+            }}>
+              {['SET', 'KG', '', 'REPS', '', ''].map((h, i) => (
+                <span key={i} style={{ fontSize: '0.58rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', letterSpacing: '0.06em', textAlign: 'center' }}>{h}</span>
               ))}
             </div>
-            <button onClick={() => addSet(rowIdx)} style={btn({ background: 'transparent', color: 'var(--text-muted)', border: '1px dashed var(--border)', marginTop: '0.5rem', fontSize: '0.75rem' })}>
-              <Plus size={12} /> Add set
+
+            {/* Set rows */}
+            {row.sets.map((s, setIdx) => (
+              <div key={setIdx} style={{
+                display: 'grid', gridTemplateColumns: '28px 64px 12px 60px 148px 24px', gap: '0 0.3rem',
+                alignItems: 'center', padding: '0.35rem 0.75rem',
+                background: setIdx % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent',
+              }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', fontWeight: 600, textAlign: 'center' }}>{setIdx + 1}</span>
+                <input type="number" placeholder="—" value={s.weight_kg}
+                  onChange={e => updateSet(rowIdx, setIdx, 'weight_kg', e.target.value)}
+                  style={{ fontSize: '0.9rem', fontWeight: 700, textAlign: 'center', padding: '0.4rem 0.3rem', minWidth: 0, borderRadius: '8px' }} />
+                <span style={{ color: 'var(--border-hover)', fontSize: '0.8rem', textAlign: 'center' }}>×</span>
+                <input type="number" placeholder="—" value={s.reps}
+                  onChange={e => updateSet(rowIdx, setIdx, 'reps', e.target.value)}
+                  style={{ fontSize: '0.9rem', fontWeight: 700, textAlign: 'center', padding: '0.4rem 0.3rem', minWidth: 0, borderRadius: '8px' }} />
+                {(!s.reps || s.reps === '') ? (
+                  <div style={{ display: 'flex', gap: '0.25rem', padding: '0 0.2rem' }}>
+                    {[8, 10, 12].map(rep => (
+                      <button key={rep} onClick={() => updateSet(rowIdx, setIdx, 'reps', String(rep))}
+                        style={{
+                          flex: 1, height: '30px',
+                          background: 'rgba(255,255,255,0.05)',
+                          border: '1px solid rgba(255,255,255,0.09)',
+                          color: '#5a5a5a', borderRadius: '6px',
+                          fontSize: '0.68rem', fontFamily: 'JetBrains Mono',
+                          cursor: 'pointer', minWidth: 0,
+                        }}>{rep}</button>
+                    ))}
+                  </div>
+                ) : <div />}
+                {row.sets.length > 1 ? (
+                  <button onClick={() => removeSet(rowIdx, setIdx)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', justifyContent: 'center' }}>
+                    <X size={13} color="var(--text-muted)" />
+                  </button>
+                ) : <div />}
+              </div>
+            ))}
+
+            {/* Add set */}
+            <button onClick={() => addSet(rowIdx)} style={{
+              width: '100%', padding: '0.55rem 1rem',
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', fontSize: '0.8rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.35rem',
+            }}>
+              <Plus size={13} /> Add set
             </button>
+
+            {/* Separator */}
+            <div style={{ height: '1px', background: 'var(--border)', margin: '0.25rem 1rem' }} />
           </div>
-          )
-        })}
-        <button onClick={addExerciseRow} style={btn({ background: 'var(--orange-dim)', color: 'var(--orange)', border: '1px solid var(--orange)', marginBottom: '1rem' })}>
-          <Plus size={14} /> Add exercise
+        ))}
+
+        {/* Add exercise */}
+        <button onClick={addExerciseRow} style={{
+          width: '100%', padding: '0.85rem 1rem',
+          background: 'none', border: 'none', cursor: 'pointer',
+          color: 'var(--orange)', fontSize: '0.9rem', fontWeight: 600,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+        }}>
+          <Plus size={15} /> Add Exercise
         </button>
-        <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
-          <input placeholder="Add new exercise to list..." value={newExerciseName} onChange={e => setNewExerciseName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addExercise()} />
+
+        {/* Quick-add exercise to library */}
+        <div style={{ display: 'flex', gap: '0.5rem', padding: '0 1rem 0.5rem' }}>
+          <input placeholder="Add new exercise to library..." value={newExerciseName} onChange={e => setNewExerciseName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addExercise()} />
           <button onClick={addExercise} style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', flexShrink: 0 })}><Plus size={14} /></button>
         </div>
       </div>
 
-      <div style={{ ...card, display: 'flex', gap: 0, padding: 0, overflow: 'hidden' }}>
-        {/* Left: timer — shrinks to content so right side gets remaining space */}
-        <div style={{ flexShrink: 0, padding: '1rem 0.75rem 1rem 1.25rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '0.5rem' }}>
-          <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>DURATION</label>
+      {/* Duration + sets — flat, edge-to-edge, no card */}
+      <div style={{ display: 'flex', alignItems: 'center', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)', marginLeft: '-1rem', marginRight: '-1rem' }}>
+        {/* Timer */}
+        <div style={{ flexShrink: 0, padding: '0.85rem 0.75rem 0.85rem 1rem', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           {watching ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1.15rem', color: 'var(--orange)', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+            <>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1.05rem', color: 'var(--text-muted)', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
                 {formatElapsed(elapsed)}
               </span>
-              <button onClick={stopWatch} style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', fontSize: '0.72rem', padding: '0.2rem 0.55rem' })}>
+              <button onClick={stopWatch} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-muted)', fontSize: '0.7rem', padding: '0.15rem 0.5rem', cursor: 'pointer' }}>
                 Stop
               </button>
-            </div>
+            </>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <input type="number" placeholder="60" value={duration} onChange={e => setDuration(e.target.value)} style={{ width: '64px' }} />
-              <button onClick={startWatch} style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)', fontSize: '0.72rem', padding: '0.2rem 0.45rem' })}>
+            <>
+              <input type="number" placeholder="60" value={duration} onChange={e => setDuration(e.target.value)}
+                style={{ width: '58px', fontSize: '0.9rem', textAlign: 'center' }} />
+              <button onClick={startWatch} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: '6px', color: 'var(--text-muted)', fontSize: '0.7rem', padding: '0.15rem 0.45rem', cursor: 'pointer' }}>
                 ▶
               </button>
-            </div>
+            </>
           )}
         </div>
 
-        <div style={{ width: '1px', background: 'var(--border)', flexShrink: 0 }} />
+        <div style={{ width: '1px', alignSelf: 'stretch', background: 'var(--border)', flexShrink: 0 }} />
 
-        {/* Right: sets per category — takes remaining width, wraps */}
-        <div style={{ flex: 1, minWidth: 0, padding: '1rem 1.25rem 1rem 0.75rem', display: 'flex', flexWrap: 'wrap', alignContent: 'center', gap: '0.15rem 0.9rem' }}>
+        {/* Sets per category */}
+        <div style={{ flex: 1, minWidth: 0, padding: '0.85rem 1rem 0.85rem 0.75rem', display: 'flex', flexWrap: 'wrap', alignContent: 'center', gap: '0.1rem 0.75rem' }}>
           {Object.entries(computeSetsPerCat()).length === 0 ? (
             <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>no sets yet</span>
           ) : (
-            Object.entries(computeSetsPerCat()).map(([cat, count]) => {
-              const color = CATEGORY_COLORS[cat] || '#8a8a8a'
-              return (
-                <div key={cat} style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem', whiteSpace: 'nowrap' }}>
-                  <span style={{ fontSize: '1.5rem', fontFamily: 'JetBrains Mono, monospace', color, lineHeight: 1.15 }}>{cat}</span>
-                  <span style={{ fontSize: '1.5rem', fontFamily: 'JetBrains Mono, monospace', color: 'white', fontWeight: 700, lineHeight: 1.15 }}>{count}</span>
-                </div>
-              )
-            })
+            Object.entries(computeSetsPerCat()).map(([cat, count]) => (
+              <div key={cat} style={{ display: 'flex', alignItems: 'baseline', gap: '0.25rem', whiteSpace: 'nowrap' }}>
+                <span style={{ fontSize: '0.8rem', color: '#707070', fontFamily: 'JetBrains Mono, monospace' }}>{cat}</span>
+                <span style={{ fontSize: '0.9rem', color: '#a0a0a0', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>{count}</span>
+              </div>
+            ))
           )}
         </div>
       </div>
 
       {saveError && (
-        <div style={{ fontSize: '0.8rem', color: '#b91c1c', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', marginTop: '-0.5rem' }}>
+        <div style={{ fontSize: '0.8rem', color: '#b91c1c', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', marginTop: '1rem' }}>
           {saveError}
         </div>
       )}
-      <button onClick={handleSave} disabled={saving} style={btn({ background: 'var(--green-text)', color: 'white', justifyContent: 'center', padding: '0.75rem', fontSize: '0.95rem' })}>
+      <button onClick={handleSave} disabled={saving} style={btn({ background: 'var(--green-text)', color: 'white', justifyContent: 'center', padding: '0.75rem', fontSize: '0.95rem', marginTop: '1.5rem' })}>
         {saving ? 'Saving...' : 'Save Workout'}
       </button>
-      <button onClick={() => setShowCancelConfirm(true)} style={btn({ background: '#080808', color: '#b91c1c', border: '1px solid #7f1d1d', justifyContent: 'center', padding: '0.75rem', fontSize: '0.95rem' })}>
+      <button onClick={() => setShowCancelConfirm(true)} style={btn({ background: '#080808', color: '#b91c1c', border: '1px solid #7f1d1d', justifyContent: 'center', padding: '0.75rem', fontSize: '0.95rem', marginTop: '0.75rem' })}>
         Cancel Workout
       </button>
 
@@ -1420,9 +1506,7 @@ function ExerciseConfig() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>
-        EXERCISE CONFIG
-      </div>
+      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)' }}>Exercise Config</div>
 
       {workoutTypes.map(type => {
         const accentColor = WORKOUT_TYPE_COLORS[type.name] || 'var(--orange)'
@@ -1650,12 +1734,12 @@ function FitnessAnalytics({ onWeekClick }) {
   })()
 
   const secCard = { ...card, marginBottom: '1.25rem' }
-  const secLabel = { fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--text-muted)', letterSpacing: '0.1em', marginBottom: '1rem' }
+  const secLabel = { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: '1rem' }
   const tooltipStyle = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }
 
   return (
     <div>
-      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '1.25rem', letterSpacing: '0.08em' }}>ANALYTICS</div>
+      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', marginBottom: '1.25rem' }}>Analytics</div>
 
       {/* Range selector */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
@@ -2260,7 +2344,7 @@ function NutritionPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div style={{ fontSize: '0.75rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', letterSpacing: '0.08em' }}>NUTRITION</div>
+      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', marginBottom: '0.25rem' }}>Nutrition</div>
 
       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <input type="text" placeholder="Search foods..." value={search} onChange={e => setSearch(e.target.value)}
