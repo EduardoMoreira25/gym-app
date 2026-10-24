@@ -6,6 +6,8 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ./backend/health_token.json:/app/health_token.json
     networks:
       proxy-net:
         ipv4_address: 172.21.0.41

@@ -5,8 +5,24 @@ from typing import Optional, List
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
+import subprocess
+import sys
+import threading
+import time
+from datetime import date as date_cls, timedelta
 
 app = FastAPI(title="Gym API")
+
+def _health_sync_loop():
+    time.sleep(30)  # let uvicorn finish starting
+    while True:
+        try:
+            subprocess.run([sys.executable, "/app/health_sync.py"], check=True, timeout=900)
+        except Exception as e:
+            print(f"[health_sync] {e}")
+        time.sleep(15 * 60)
+
+threading.Thread(target=_health_sync_loop, daemon=True, name="health-sync").start()
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,11 +45,21 @@ NUTRITION_DB = {
     "password": os.getenv("DB_PASSWORD", ""),
 }
 
+HEALTH_DB = {
+    "host": os.getenv("DB_HOST", "172.21.0.1"),
+    "dbname": "health",
+    "user": os.getenv("DB_USER", "miendes"),
+    "password": os.getenv("DB_PASSWORD", ""),
+}
+
 def get_conn():
     return psycopg2.connect(**DB, cursor_factory=RealDictCursor)
 
 def get_nutrition_conn():
     return psycopg2.connect(**NUTRITION_DB, cursor_factory=RealDictCursor)
+
+def get_health_conn():
+    return psycopg2.connect(**HEALTH_DB, cursor_factory=RealDictCursor)
 
 # --- Models ---
 class WorkoutTypeCreate(BaseModel):
@@ -43,10 +69,12 @@ class ExerciseCreate(BaseModel):
     name: str
     workout_type_id: Optional[int] = None
     muscle_group: Optional[str] = None
+    muscle_group_category_id: Optional[int] = None
 
 class ExerciseUpdate(BaseModel):
     name: Optional[str] = None
     muscle_group: Optional[str] = None
+    muscle_group_category_id: Optional[int] = None
 
 class SetRecord(BaseModel):
     exercise_id: int
@@ -83,19 +111,33 @@ def create_workout_type(data: WorkoutTypeCreate):
             return cur.fetchone()
 
 # --- Exercises ---
+@app.get("/muscle-group-categories")
+def get_muscle_group_categories():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM muscle_group_categories ORDER BY id")
+            return cur.fetchall()
+
 @app.get("/exercises")
 def get_exercises(workout_type_id: Optional[int] = None):
     with get_conn() as conn:
         with conn.cursor() as cur:
             if workout_type_id:
                 cur.execute("""
-                    SELECT e.* FROM exercises e
+                    SELECT e.*, mgc.name as muscle_group_category_name
+                    FROM exercises e
+                    LEFT JOIN muscle_group_categories mgc ON e.muscle_group_category_id = mgc.id
                     JOIN exercise_workout_types ewt ON e.id = ewt.exercise_id
                     WHERE ewt.workout_type_id = %s
-                    ORDER BY e.name
+                    ORDER BY mgc.id NULLS LAST, e.name
                 """, (workout_type_id,))
             else:
-                cur.execute("SELECT * FROM exercises ORDER BY name")
+                cur.execute("""
+                    SELECT e.*, mgc.name as muscle_group_category_name
+                    FROM exercises e
+                    LEFT JOIN muscle_group_categories mgc ON e.muscle_group_category_id = mgc.id
+                    ORDER BY mgc.id NULLS LAST, e.name
+                """)
             return cur.fetchall()
 
 @app.post("/exercises")
@@ -103,8 +145,8 @@ def create_exercise(data: ExerciseCreate):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO exercises (name, muscle_group) VALUES (%s, %s) RETURNING *",
-                (data.name, data.muscle_group)
+                "INSERT INTO exercises (name, muscle_group, muscle_group_category_id) VALUES (%s, %s, %s) RETURNING *",
+                (data.name, data.muscle_group, data.muscle_group_category_id)
             )
             exercise = cur.fetchone()
             if data.workout_type_id:
@@ -126,6 +168,9 @@ def update_exercise(exercise_id: int, data: ExerciseUpdate):
             if 'muscle_group' in data.model_fields_set:
                 fields.append("muscle_group = %s")
                 values.append(data.muscle_group)
+            if 'muscle_group_category_id' in data.model_fields_set:
+                fields.append("muscle_group_category_id = %s")
+                values.append(data.muscle_group_category_id)
             if not fields:
                 cur.execute("SELECT * FROM exercises WHERE id = %s", (exercise_id,))
                 return cur.fetchone()
@@ -495,3 +540,200 @@ def delete_meal(meal_id: int):
             cur.execute("DELETE FROM meals WHERE id = %s", (meal_id,))
             conn.commit()
             return {"message": "Deleted"}
+
+# --- Health (Fitbit) ---
+
+def _f(val):
+    return float(val) if val is not None else None
+
+@app.get("/health/hr_during")
+def get_hr_during(start: str, end: str):
+    with get_health_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT sampled_at, bpm
+                FROM fitbit.raw_heart_rate
+                WHERE sampled_at >= %s AND sampled_at <= %s
+                ORDER BY sampled_at ASC
+            """, (start, end))
+            points = [{'t': r['sampled_at'].isoformat(), 'bpm': r['bpm']} for r in cur.fetchall()]
+            cur.execute("""
+                SELECT zone_type, min_bpm, max_bpm
+                FROM fitbit.computed_daily_hr_zones
+                WHERE date = (
+                    SELECT MAX(date) FROM fitbit.computed_daily_hr_zones
+                    WHERE date <= %s::timestamptz::date
+                )
+                ORDER BY min_bpm
+            """, (start,))
+            zones = {r['zone_type']: {'min': r['min_bpm'], 'max': r['max_bpm']} for r in cur.fetchall()}
+            return {'points': points, 'zones': zones}
+
+@app.get("/health/current")
+def get_health_current():
+    with get_health_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT sampled_at, bpm FROM fitbit.raw_heart_rate ORDER BY sampled_at DESC LIMIT 1")
+            hr = cur.fetchone()
+            cur.execute("SELECT sampled_at, percentage FROM fitbit.raw_oxygen_saturation WHERE percentage > 50 ORDER BY sampled_at DESC LIMIT 1")
+            spo2 = cur.fetchone()
+            cur.execute("SELECT sampled_at, rmssd_ms FROM fitbit.raw_heart_rate_variability ORDER BY sampled_at DESC LIMIT 1")
+            hrv = cur.fetchone()
+            cur.execute("SELECT COALESCE(SUM(count),0)::int AS steps FROM fitbit.activity_steps WHERE interval_start::date = CURRENT_DATE")
+            today_steps = cur.fetchone()['steps']
+            cur.execute("SELECT COALESCE(SUM(meters),0) AS dist FROM fitbit.activity_distance WHERE interval_start::date = CURRENT_DATE")
+            today_dist = _f(cur.fetchone()['dist'])
+            return {
+                'heart_rate': {'bpm': hr['bpm'], 'sampled_at': hr['sampled_at'].isoformat()} if hr else None,
+                'spo2': {'percentage': _f(spo2['percentage']), 'sampled_at': spo2['sampled_at'].isoformat()} if spo2 else None,
+                'hrv': {'rmssd_ms': _f(hrv['rmssd_ms']), 'sampled_at': hrv['sampled_at'].isoformat()} if hrv else None,
+                'today_steps': today_steps,
+                'today_distance_m': today_dist,
+            }
+
+@app.get("/health/days")
+def get_health_days(days: int = 7, end_date: Optional[str] = None):
+    with get_health_conn() as conn:
+        with conn.cursor() as cur:
+            end = date_cls.fromisoformat(end_date) if end_date else date_cls.today()
+            start = end - timedelta(days=days - 1)
+            date_list = [start + timedelta(days=i) for i in range(days)]
+
+            cur.execute("SELECT date, bpm FROM fitbit.computed_daily_resting_heart_rate WHERE date >= %s", (start,))
+            rhr = {r['date']: r['bpm'] for r in cur.fetchall()}
+
+            cur.execute("SELECT date, avg_rmssd_ms, deep_sleep_rmssd_ms, entropy FROM fitbit.computed_daily_hrv WHERE date >= %s", (start,))
+            hrv = {r['date']: r for r in cur.fetchall()}
+
+            cur.execute("SELECT date, avg_pct, lower_pct FROM fitbit.computed_daily_oxygen_saturation WHERE date >= %s", (start,))
+            spo2 = {r['date']: r for r in cur.fetchall()}
+
+            cur.execute("SELECT date, breaths_per_min FROM fitbit.computed_daily_respiratory_rate WHERE date >= %s", (start,))
+            resp = {r['date']: _f(r['breaths_per_min']) for r in cur.fetchall()}
+
+            cur.execute("SELECT date, nightly_celsius, baseline_celsius FROM fitbit.computed_daily_sleep_temperature WHERE date >= %s", (start,))
+            temp = {r['date']: r for r in cur.fetchall()}
+
+            cur.execute("""
+                SELECT interval_start::date AS d, SUM(count)::int AS steps
+                FROM fitbit.activity_steps WHERE interval_start::date >= %s GROUP BY 1
+            """, (start,))
+            steps = {r['d']: r['steps'] for r in cur.fetchall()}
+
+            cur.execute("""
+                SELECT interval_start::date AS d, SUM(meters) AS dist
+                FROM fitbit.activity_distance WHERE interval_start::date >= %s GROUP BY 1
+            """, (start,))
+            dist = {r['d']: _f(r['dist']) for r in cur.fetchall()}
+
+            # Sleep: fetch sessions starting from the day before (catches early-AM sleeps)
+            cur.execute("""
+                SELECT s.id, s.started_at, s.ended_at, s.minutes_asleep, s.minutes_awake,
+                       s.started_at::date AS sleep_date
+                FROM fitbit.sessions_sleep s
+                WHERE s.started_at::date >= %s - 1
+                ORDER BY s.started_at DESC
+            """, (start,))
+            sleeps = {r['sleep_date']: r for r in cur.fetchall()}
+
+            # Stage summaries for those sessions
+            if sleeps:
+                sleep_ids = [s['id'] for s in sleeps.values()]
+                cur.execute("""
+                    SELECT sleep_id, stage_type,
+                           SUM(EXTRACT(EPOCH FROM (ended_at - started_at))/60)::int AS minutes
+                    FROM fitbit.sessions_sleep_stages
+                    WHERE sleep_id = ANY(%s)
+                    GROUP BY sleep_id, stage_type
+                """, (sleep_ids,))
+                stage_rows = cur.fetchall()
+                stages_by_sleep = {}
+                for row in stage_rows:
+                    stages_by_sleep.setdefault(row['sleep_id'], {})[row['stage_type']] = row['minutes']
+            else:
+                stages_by_sleep = {}
+
+            result = []
+            for d in reversed(date_list):  # newest first
+                sl = sleeps.get(d)
+                sleep_obj = None
+                if sl:
+                    sleep_obj = {
+                        'started_at': sl['started_at'].isoformat(),
+                        'ended_at': sl['ended_at'].isoformat(),
+                        'minutes_asleep': sl['minutes_asleep'],
+                        'minutes_awake': sl['minutes_awake'],
+                        'stages': stages_by_sleep.get(sl['id'], {}),
+                    }
+                h = hrv.get(d, {})
+                s = spo2.get(d, {})
+                t = temp.get(d, {})
+                result.append({
+                    'date': d.isoformat(),
+                    'resting_hr': rhr.get(d),
+                    'hrv_avg_ms': _f(h.get('avg_rmssd_ms')),
+                    'hrv_deep_rmssd_ms': _f(h.get('deep_sleep_rmssd_ms')),
+                    'hrv_entropy': _f(h.get('entropy')),
+                    'spo2_avg': _f(s.get('avg_pct')),
+                    'spo2_lower': _f(s.get('lower_pct')),
+                    'respiratory_rate': resp.get(d),
+                    'sleep_temp_nightly': _f(t.get('nightly_celsius')),
+                    'sleep_temp_baseline': _f(t.get('baseline_celsius')),
+                    'steps': steps.get(d),
+                    'distance_m': dist.get(d),
+                    'sleep': sleep_obj,
+                })
+            return result
+
+@app.get("/health/sleep/{date}")
+def get_sleep_detail(date: str):
+    with get_health_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM fitbit.sessions_sleep
+                WHERE started_at::date = %s ORDER BY started_at DESC LIMIT 1
+            """, (date,))
+            sl = cur.fetchone()
+            if not sl:
+                raise HTTPException(status_code=404, detail="No sleep data for this date")
+            cur.execute("""
+                SELECT stage_type, started_at, ended_at
+                FROM fitbit.sessions_sleep_stages WHERE sleep_id = %s ORDER BY started_at
+            """, (sl['id'],))
+            stages = cur.fetchall()
+            return {
+                'started_at': sl['started_at'].isoformat(),
+                'ended_at': sl['ended_at'].isoformat(),
+                'minutes_asleep': sl['minutes_asleep'],
+                'minutes_awake': sl['minutes_awake'],
+                'stages_timeline': [
+                    {'type': s['stage_type'],
+                     'started_at': s['started_at'].isoformat(),
+                     'ended_at': s['ended_at'].isoformat()}
+                    for s in stages
+                ],
+            }
+
+@app.get("/health/exercise")
+def get_health_exercise(days: int = 30):
+    with get_health_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM fitbit.sessions_exercise
+                WHERE started_at >= NOW() - %s * INTERVAL '1 day'
+                ORDER BY started_at DESC
+            """, (days,))
+            return [{
+                'started_at': r['started_at'].isoformat(),
+                'ended_at': r['ended_at'].isoformat(),
+                'exercise_type': r['exercise_type'],
+                'display_name': r['display_name'],
+                'active_duration_s': r['active_duration_s'],
+                'calories_kcal': _f(r['calories_kcal']),
+                'avg_hr_bpm': r['avg_hr_bpm'],
+                'active_zone_minutes': r['active_zone_minutes'],
+                'light_s': r['light_s'],
+                'moderate_s': r['moderate_s'],
+                'vigorous_s': r['vigorous_s'],
+                'peak_s': r['peak_s'],
+            } for r in cur.fetchall()]

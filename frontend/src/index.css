@@ -1,48 +1,50 @@
 :root {
   --bg: #0a0a0a;
-  --surface: #111111;
-  --surface-hover: #1a1a1a;
-  --border: #1e1e1e;
-  --border-hover: #2a2a2a;
-  --text: #e0e0e0;
-  --text-muted: #5a5a5a;
+  --surface: #141414;
+  --surface-hover: #1c1c1c;
+  --border: #252525;
+  --border-hover: #333333;
+  --text: #e8e8e8;
+  --text-muted: #6a6a6a;
   --orange: #e8732a;
-  --orange-dim: rgba(232, 115, 42, 0.08);
-  --orange-dim2: rgba(232, 115, 42, 0.15);
+  --orange-dim: rgba(232, 115, 42, 0.09);
+  --orange-dim2: rgba(232, 115, 42, 0.16);
   --green: #2d5a3f;
   --green-text: #4a8c6a;
   --red: #e05555;
   --red-dim: rgba(224, 85, 85, 0.08);
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
 body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Space Grotesk', sans-serif;
   min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
 
 input, select, textarea {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  padding: 0.65rem 0.9rem;
   color: var(--text);
   font-family: 'Space Grotesk', sans-serif;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
   outline: none;
   width: 100%;
-  transition: border-color 0.2s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 input:focus, select:focus, textarea:focus {
   border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(232,115,42,0.12);
 }
 
 select option {
@@ -52,4 +54,10 @@ select option {
 button {
   font-family: 'Space Grotesk', sans-serif;
   cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+button:active {
+  transform: scale(0.97);
+  opacity: 0.85;
 }
