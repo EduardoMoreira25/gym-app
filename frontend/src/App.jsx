@@ -221,15 +221,41 @@ export default function App() {
     }
   }, [view])
 
+  // Seed initial history entry so back from the first view goes nowhere bad
+  useEffect(() => {
+    history.replaceState({ view, workoutId: selectedWorkout?.id ?? null }, '')
+  }, [])
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const onPop = async (e) => {
+      const state = e.state
+      if (!state) return
+      const targetView = state.view || 'list'
+      if (targetView === 'detail' && state.workoutId) {
+        const res = await axios.get(`${API}/workouts/${state.workoutId}`)
+        setSelectedWorkout(res.data)
+      }
+      setView(targetView)
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const navigate = (newView, opts = {}) => {
+    history.pushState({ view: newView, workoutId: opts.workoutId ?? null }, '')
+    setView(newView)
+  }
+
   const openWorkout = async (id) => {
     const res = await axios.get(`${API}/workouts/${id}`)
     setSelectedWorkout(res.data)
-    setView('detail')
+    navigate('detail', { workoutId: id })
   }
 
   const deleteWorkout = async (id) => {
     await axios.delete(`${API}/workouts/${id}`)
-    setView('list')
+    navigate('list')
     loadWorkouts()
   }
 
@@ -240,7 +266,6 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)' }}>
       <header style={{
-        borderBottom: '1px solid var(--border)',
         padding: '0.9rem 1.5rem',
         display: 'flex',
         alignItems: 'center',
@@ -256,11 +281,11 @@ export default function App() {
           <Menu size={20} color="var(--text-muted)" />
         </button>
         {view !== 'list' && (
-          <button onClick={() => setView('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+          <button onClick={() => navigate('list')} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <ChevronLeft size={20} color="var(--text-muted)" />
           </button>
         )}
-        <span onClick={() => setView('list')} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem', letterSpacing: '0.1em', color: 'var(--text-muted)', marginRight: 'auto', cursor: 'pointer' }}>
+        <span onClick={() => navigate('list')} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '1rem', letterSpacing: '0.1em', color: 'var(--text-muted)', marginRight: 'auto', cursor: 'pointer' }}>
           edu<span style={{ color: 'var(--orange)', fontWeight: 500 }}>Gym</span>
         </span>
       </header>
@@ -280,7 +305,7 @@ export default function App() {
               const bg = draftType === 'caminhada' ? 'rgba(200,200,200,0.06)' : 'var(--orange-dim2)'
               const dot = draftType === 'caminhada' ? CAMINHADA_COLOR : '#4caf50'
               return (
-                <button onClick={() => { setView(draftType); setMenuOpen(false) }} style={{
+                <button onClick={() => { navigate(draftType); setMenuOpen(false) }} style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.2rem',
                   background: bg, border: `1px solid ${bc}`, borderRadius: '10px',
                   padding: '0.65rem 0.75rem', marginBottom: '1rem', cursor: 'pointer', width: '100%',
@@ -307,7 +332,7 @@ export default function App() {
               ].map(({ label, target }) => (
                 <button
                   key={target}
-                  onClick={() => { setView(target); setMenuOpen(false) }}
+                  onClick={() => { navigate(target); setMenuOpen(false) }}
                   style={{ ...btn({ background: view === target ? 'rgba(74,140,106,0.12)' : 'transparent', color: view === target ? 'var(--green-text)' : 'var(--text-muted)', border: '1px solid transparent', justifyContent: 'flex-start', padding: '0.6rem 0.75rem', fontSize: '0.875rem' }) }}
                   onMouseEnter={e => { e.currentTarget.style.color = 'var(--green-text)'; e.currentTarget.style.background = 'rgba(74,140,106,0.08)' }}
                   onMouseLeave={e => { e.currentTarget.style.color = view === target ? 'var(--green-text)' : 'var(--text-muted)'; e.currentTarget.style.background = view === target ? 'rgba(74,140,106,0.12)' : 'transparent' }}
@@ -325,54 +350,49 @@ export default function App() {
         {/* LIST VIEW */}
         {view === 'list' && (
           <>
-            <div style={{ marginBottom: '1rem' }}>
+            {/* Filter toggle */}
+            <div style={{ marginLeft: '-1.5rem', marginRight: '-1.5rem' }}>
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                style={btn({ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-muted)', marginBottom: '0.5rem' })}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1.5rem', width: '100%' }}
               >
-                <Filter size={14} /> Filters {showFilters ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                <Filter size={13} /> Filters {showFilters ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
               </button>
               {showFilters && (
-                <div style={{ ...card, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', padding: '0.75rem 1.5rem 0.85rem', borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
                   <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>Type</label>
-                    <Dropdown
-                      value={filterType}
-                      onChange={setFilterType}
-                      options={[{ value: '', label: 'All' }, { value: 'ginasio', label: 'Ginásio' }, { value: 'caminhada', label: 'Caminhada' }]}
-                    />
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.06em' }}>TYPE</label>
+                    <Dropdown value={filterType} onChange={setFilterType} options={[{ value: '', label: 'All' }, { value: 'ginasio', label: 'Ginásio' }, { value: 'caminhada', label: 'Caminhada' }]} />
                   </div>
                   <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>From</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.06em' }}>FROM</label>
                     <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)} />
                   </div>
                   <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>To</label>
+                    <label style={{ fontSize: '0.65rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.06em' }}>TO</label>
                     <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} />
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Draft in-progress banner */}
             {hasDraft && (
               <>
                 <style>{`@keyframes pulse-dot-green{0%{box-shadow:0 0 0 0 #4caf5090;transform:scale(1)}50%{box-shadow:0 0 0 10px #4caf5000;transform:scale(1.3)}100%{box-shadow:0 0 0 0 #4caf5000;transform:scale(1)}}@keyframes pulse-dot-grey{0%{box-shadow:0 0 0 0 #c8c8c890;transform:scale(1)}50%{box-shadow:0 0 0 10px #c8c8c800;transform:scale(1.3)}100%{box-shadow:0 0 0 0 #c8c8c800;transform:scale(1)}}`}</style>
-                <button onClick={() => setView(draftType)} style={{
-                  ...card, display: 'flex', alignItems: 'center', gap: '1rem',
-                  cursor: 'pointer', padding: '0.9rem 1.1rem', marginBottom: '0.75rem', width: '100%', textAlign: 'left',
+                <button onClick={() => navigate(draftType)} style={{
+                  display: 'flex', alignItems: 'center', gap: '1rem',
+                  cursor: 'pointer', padding: '0.9rem 1.5rem', width: 'calc(100% + 3rem)', textAlign: 'left',
+                  background: 'rgba(76,175,80,0.06)', border: 'none',
+                  borderBottom: '1px solid var(--border)',
+                  marginLeft: '-1.5rem',
                 }}>
-                  <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: draftType === 'caminhada' ? CAMINHADA_COLOR : '#4caf50', flexShrink: 0, animation: `${draftType === 'caminhada' ? 'pulse-dot-grey' : 'pulse-dot-green'} 1.6s ease-in-out infinite` }} />
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: draftType === 'caminhada' ? CAMINHADA_COLOR : '#4caf50', flexShrink: 0, animation: `${draftType === 'caminhada' ? 'pulse-dot-grey' : 'pulse-dot-green'} 1.6s ease-in-out infinite` }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em' }}>
-                      WORKOUT IN PROGRESS
-                    </div>
-                    {liveTimer && (
-                      <div style={{ fontSize: '1.1rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)', letterSpacing: '0.05em', marginTop: '0.2rem' }}>
-                        {liveTimer}
-                      </div>
-                    )}
+                    <div style={{ fontSize: '0.65rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text-muted)', fontWeight: 700, letterSpacing: '0.06em' }}>WORKOUT IN PROGRESS</div>
+                    {liveTimer && <div style={{ fontSize: '1rem', fontFamily: 'JetBrains Mono, monospace', color: 'var(--text)', letterSpacing: '0.05em', marginTop: '0.15rem' }}>{liveTimer}</div>}
                   </div>
-                  <span style={{ fontSize: '0.8rem', color: 'white', fontFamily: 'JetBrains Mono, monospace' }}>Continue →</span>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>Continue →</span>
                 </button>
               </>
             )}
@@ -387,41 +407,44 @@ export default function App() {
               const visible = workouts.slice((page - 1) * PER_PAGE, page * PER_PAGE)
               return (
                 <>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                    {visible.map(w => (
-                      <div
-                        key={w.id}
-                        onClick={() => openWorkout(w.id)}
-                        style={{
-                          ...card,
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '1rem',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-hover)'; e.currentTarget.style.background = 'var(--surface-hover)' }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)' }}
-                      >
-                        <div style={{
-                          width: '40px', height: '40px', borderRadius: '10px',
-                          background: 'rgba(200,200,200,0.08)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                        }}>
-                          {w.type === 'ginasio'
-                            ? <WorkoutTypeIcon typeName={w.workout_type_name} size={18} />
-                            : <Footprints size={18} color={CAMINHADA_COLOR} />}
-                        </div>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 500, fontSize: '0.9rem', color: 'var(--text)' }}>
-                            {w.type === 'ginasio' ? (w.workout_type_name || 'Ginásio') : 'Caminhada'}
+                  {/* Flat workout list — edge-to-edge rows */}
+                  <div style={{ marginLeft: '-1.5rem', marginRight: '-1.5rem' }}>
+                    {visible.map((w, idx) => (
+                      <div key={w.id}>
+                        <div
+                          onClick={() => openWorkout(w.id)}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '1rem',
+                            padding: '1.55rem 1.5rem',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        >
+                          <div style={{
+                            width: '40px', height: '40px', borderRadius: '10px',
+                            background: 'rgba(200,200,200,0.06)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                          }}>
+                            {w.type === 'ginasio'
+                              ? <WorkoutTypeIcon typeName={w.workout_type_name} size={18} />
+                              : <Footprints size={18} color={CAMINHADA_COLOR} />}
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                            {formatDate(w.date)}
-                            {w.duration_minutes && ` · ${w.duration_minutes} min`}
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text)' }}>
+                              {w.type === 'ginasio' ? (w.workout_type_name || 'Ginásio') : 'Caminhada'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+                              {formatDate(w.date)}
+                              {w.duration_minutes && ` · ${w.duration_minutes} min`}
+                            </div>
                           </div>
+                          <ChevronDown size={15} color="var(--text-muted)" style={{ transform: 'rotate(-90deg)', flexShrink: 0 }} />
                         </div>
-                        <ChevronDown size={16} color="var(--text-muted)" style={{ transform: 'rotate(-90deg)' }} />
+                        {idx < visible.length - 1 && (
+                          <div style={{ height: '1px', background: 'var(--border)', width: '50%', margin: '0 auto' }} />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -459,7 +482,7 @@ export default function App() {
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>What are you training today?</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <button
-                onClick={() => setView('ginasio')}
+                onClick={() => navigate('ginasio')}
                 style={{
                   ...card, border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left',
                   transition: 'all 0.18s', color: 'var(--text)', padding: '1.5rem',
@@ -478,7 +501,7 @@ export default function App() {
                 <ChevronDown size={18} color="var(--text-muted)" style={{ marginLeft: 'auto', transform: 'rotate(-90deg)', flexShrink: 0 }} />
               </button>
               <button
-                onClick={() => setView('caminhada')}
+                onClick={() => navigate('caminhada')}
                 style={{
                   ...card, border: '1px solid var(--border)', cursor: 'pointer', textAlign: 'left',
                   transition: 'all 0.18s', color: 'var(--text)', padding: '1.5rem',
@@ -500,8 +523,8 @@ export default function App() {
           </div>
         )}
 
-        {view === 'ginasio' && <GinasioForm onSave={() => { loadWorkouts(); setView('list') }} onCancel={() => setView('list')} />}
-        {view === 'caminhada' && <CaminhadaForm onSave={() => { loadWorkouts(); setView('list') }} onCancel={() => setView('list')} />}
+        {view === 'ginasio' && <GinasioForm onSave={() => { loadWorkouts(); navigate('list') }} onCancel={() => navigate('list')} />}
+        {view === 'caminhada' && <CaminhadaForm onSave={() => { loadWorkouts(); navigate('list') }} onCancel={() => navigate('list')} />}
         {view === 'detail' && selectedWorkout && (
           <WorkoutDetail workout={selectedWorkout} onDelete={() => deleteWorkout(selectedWorkout.id)} formatDate={formatDate} />
         )}
@@ -512,14 +535,14 @@ export default function App() {
           setFilterTo(to)
           setShowFilters(true)
           setPage(1)
-          setView('list')
+          navigate('list')
         }} />}
       </div>
 
       {/* FAB — new workout */}
       {view === 'list' && (
         <button
-          onClick={() => setView('choose')}
+          onClick={() => navigate('choose')}
           style={{
             position: 'fixed', bottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))', right: '1.5rem',
             width: '58px', height: '58px', borderRadius: '50%',
@@ -1211,7 +1234,7 @@ function HRSparkline({ start, durationMinutes }) {
   }, [start, durationMinutes])
 
   if (data === null) return (
-    <div style={{ ...card, padding: '1rem', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+    <div style={{ padding: '0.75rem 1.5rem', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem', color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
       Loading heart rate…
     </div>
   )
@@ -1264,9 +1287,9 @@ function HRSparkline({ start, durationMinutes }) {
   const zoneOrder = ['LIGHT', 'MODERATE', 'VIGOROUS', 'PEAK']
 
   return (
-    <div style={{ ...card, padding: '0.85rem 1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Heart Rate</span>
+    <div style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1.5rem 0.4rem' }}>
+        <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Heart Rate</span>
         <div style={{ display: 'flex', gap: '1rem', fontFamily: 'JetBrains Mono, monospace', fontSize: '0.72rem' }}>
           <span style={{ color: 'var(--text-muted)' }}>avg <span style={{ color: 'var(--text)', fontWeight: 600 }}>{avgBpm}</span></span>
           <span style={{ color: 'var(--text-muted)' }}>min <span style={{ color: ZONE_COLORS.LIGHT, fontWeight: 600 }}>{minBpm}</span></span>
@@ -1283,7 +1306,7 @@ function HRSparkline({ start, durationMinutes }) {
         <line x1="0" y1={py(avgBpm).toFixed(1)} x2={W} y2={py(avgBpm).toFixed(1)}
           stroke="rgba(128,128,128,0.4)" strokeWidth="0.8" strokeDasharray="4 3" />
       </svg>
-      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+      <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', padding: '0.4rem 1.5rem 0.65rem' }}>
         {zoneOrder.filter(z => zones[z]).map(z => (
           <span key={z} style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <span style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '2px', background: ZONE_COLORS[z] }} />
@@ -1307,79 +1330,103 @@ function WorkoutDetail({ workout, onDelete, formatDate }) {
     }
   }
 
+  const exEntries = Object.entries(groupedSets)
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div style={{ ...card, display: 'flex', alignItems: 'center', gap: '1rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', marginLeft: '-1.5rem', marginRight: '-1.5rem' }}>
+
+      {/* Workout header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.5rem', borderBottom: '1px solid var(--border)' }}>
         <div style={{
-          width: '48px', height: '48px', borderRadius: '12px',
-          background: 'rgba(200,200,200,0.08)',
+          width: '42px', height: '42px', borderRadius: '10px',
+          background: 'rgba(200,200,200,0.06)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
         }}>
-          {workout.type === 'ginasio' ? <WorkoutTypeIcon typeName={workout.workout_type_name} size={22} /> : <Footprints size={22} color={CAMINHADA_COLOR} />}
+          {workout.type === 'ginasio' ? <WorkoutTypeIcon typeName={workout.workout_type_name} size={20} /> : <Footprints size={20} color={CAMINHADA_COLOR} />}
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: '1rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text)' }}>
             {workout.type === 'ginasio' ? (workout.workout_type_name || 'Ginásio') : 'Caminhada'}
           </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>{formatDate(workout.date)}</div>
-        </div>
-        {workout.duration_minutes && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            <Clock size={14} />{workout.duration_minutes} min
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
+            {formatDate(workout.date)}{workout.duration_minutes ? ` · ${workout.duration_minutes} min` : ''}
           </div>
-        )}
+        </div>
       </div>
 
+      {/* HR sparkline */}
       {workout.duration_minutes && (
         <HRSparkline start={workout.date} durationMinutes={workout.duration_minutes} />
       )}
 
-      {workout.type === 'ginasio' && Object.entries(groupedSets).map(([name, sets]) => (
-        <div key={name} style={card}>
-          <div style={{ fontWeight: 500, marginBottom: '0.75rem', color: 'var(--orange)' }}>{name}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+      {/* Exercise sections — flat */}
+      {workout.type === 'ginasio' && exEntries.map(([name, sets], exIdx) => {
+        const catColor = sets[0]?.muscle_group_category_name ? (CATEGORY_COLORS[sets[0].muscle_group_category_name] || '#8a8a8a') : '#8a8a8a'
+        return (
+          <div key={name}>
+            {/* Exercise name bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.75rem 1.5rem', background: 'var(--surface)', borderTop: exIdx === 0 ? '1px solid var(--border)' : 'none' }}>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: catColor, flexShrink: 0 }} />
+              <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text)' }}>{name}</span>
+            </div>
+
+            {/* Column headers */}
+            <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr 14px 1fr', padding: '0.25rem 1.5rem', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+              {['SET', 'KG', '', 'REPS'].map((h, i) => (
+                <span key={i} style={{ fontSize: '0.58rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', letterSpacing: '0.06em', textAlign: 'center' }}>{h}</span>
+              ))}
+            </div>
+
+            {/* Set rows */}
             {sets.map((s, i) => (
               <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: '0.75rem',
-                padding: '0.4rem 0.6rem', background: 'var(--surface-hover)', borderRadius: '6px', fontSize: '0.85rem'
+                display: 'grid', gridTemplateColumns: '28px 1fr 14px 1fr',
+                alignItems: 'center', padding: '0.5rem 1.5rem',
+                background: i % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent',
               }}>
-                <span style={{ color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', fontSize: '0.75rem', width: '30px' }}>S{s.set_number}</span>
-                <span style={{ fontWeight: 500 }}>{s.weight_kg ? `${s.weight_kg} kg` : '—'}</span>
-                <span style={{ color: 'var(--text-muted)' }}>×</span>
-                <span style={{ fontWeight: 500 }}>{s.reps} reps</span>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', fontWeight: 600, textAlign: 'center' }}>{s.set_number}</span>
+                <span style={{ fontSize: '0.92rem', fontWeight: 700, textAlign: 'center', color: 'var(--text)' }}>{s.weight_kg ? `${s.weight_kg}` : '—'}</span>
+                <span style={{ color: 'var(--border-hover)', fontSize: '0.8rem', textAlign: 'center' }}>×</span>
+                <span style={{ fontSize: '0.92rem', fontWeight: 700, textAlign: 'center', color: 'var(--text)' }}>{s.reps}</span>
               </div>
             ))}
-          </div>
-        </div>
-      ))}
 
+            {exIdx < exEntries.length - 1 && (
+              <div style={{ height: '1px', background: 'var(--border)', width: '50%', margin: '0.5rem auto' }} />
+            )}
+          </div>
+        )
+      })}
+
+      {/* Caminhada details */}
       {workout.type === 'caminhada' && workout.caminhada && (
-        <div style={card}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {workout.caminhada.distance_km && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <MapPin size={16} color={CAMINHADA_COLOR} />
-                <span style={{ fontWeight: 500 }}>{workout.caminhada.distance_km} km</span>
-              </div>
-            )}
-            {workout.caminhada.notes && (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', lineHeight: 1.5 }}>{workout.caminhada.notes}</div>
-            )}
-          </div>
+        <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+          {workout.caminhada.distance_km && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <MapPin size={15} color={CAMINHADA_COLOR} />
+              <span style={{ fontWeight: 600 }}>{workout.caminhada.distance_km} km</span>
+            </div>
+          )}
+          {workout.caminhada.notes && (
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.875rem', lineHeight: 1.5 }}>{workout.caminhada.notes}</div>
+          )}
         </div>
       )}
 
-      {!confirmDelete ? (
-        <button onClick={() => setConfirmDelete(true)} style={btn({ background: 'var(--red-dim)', color: 'var(--red)', border: '1px solid rgba(224,85,85,0.2)', justifyContent: 'center' })}>
-          <Trash2 size={14} /> Delete Workout
-        </button>
-      ) : (
-        <div style={{ ...card, display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <span style={{ flex: 1, fontSize: '0.875rem', color: 'var(--text-muted)', alignSelf: 'center' }}>Delete this workout?</span>
-          <button onClick={() => setConfirmDelete(false)} style={btn({ background: 'var(--surface-hover)', color: 'var(--text-muted)', border: '1px solid var(--border)' })}>Cancel</button>
-          <button onClick={onDelete} style={btn({ background: '#3a1a1a', color: 'var(--red)', border: '1px solid #5a2a2a' })}>Delete</button>
-        </div>
-      )}
+      {/* Delete */}
+      <div style={{ padding: '1.5rem 1.5rem 0', borderTop: '1px solid var(--border)', marginTop: '0.5rem' }}>
+        {!confirmDelete ? (
+          <button onClick={() => setConfirmDelete(true)} style={btn({ background: 'none', color: '#666', border: '1px solid var(--border)', justifyContent: 'center', width: '100%' })}>
+            <Trash2 size={14} /> Delete Workout
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <span style={{ flex: 1, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Delete this workout?</span>
+            <button onClick={() => setConfirmDelete(false)} style={btn({ background: 'none', color: 'var(--text-muted)', border: '1px solid var(--border)' })}>Cancel</button>
+            <button onClick={onDelete} style={btn({ background: '#3a1a1a', color: 'var(--red)', border: '1px solid #5a2a2a' })}>Delete</button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1504,66 +1551,56 @@ function ExerciseConfig() {
 
   const iconBtn = (extra = {}) => ({ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.25rem', flexShrink: 0, ...extra })
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)' }}>Exercise Config</div>
+  const catOptions = [
+    { value: '', label: '— category —' },
+    ...Object.entries(CATEGORY_COLORS).map(([name, color]) => ({ value: name, label: name, dot: color }))
+  ]
 
-      {workoutTypes.map(type => {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', marginLeft: '-1.5rem', marginRight: '-1.5rem' }}>
+
+      {workoutTypes.map((type, typeIdx) => {
         const accentColor = WORKOUT_TYPE_COLORS[type.name] || 'var(--orange)'
         const exList = exercisesByType[type.id] || []
         return (
-          <div key={type.id} style={{ ...card, padding: 0, overflow: 'hidden' }}>
-            {/* Section header */}
+          <div key={type.id}>
+            {/* Section header — flat, small dot */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '0.75rem 1.1rem',
-              background: accentColor + '14',
-              borderBottom: `2px solid ${accentColor}30`,
+              padding: '1.1rem 1.5rem 0.65rem',
+              borderTop: typeIdx > 0 ? '1px solid var(--border)' : 'none',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                <WorkoutTypeIcon typeName={type.name} size={14} />
-                <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', fontWeight: 700, color: accentColor, letterSpacing: '0.1em' }}>
-                  {type.name.toUpperCase()}
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: accentColor, flexShrink: 0 }} />
+                <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text)' }}>{type.name}</span>
               </div>
-              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+              <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
                 {exList.length} exercise{exList.length !== 1 ? 's' : ''}
               </span>
             </div>
 
-            <div style={{ padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-              {exList.length === 0 && (
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', padding: '0.75rem 0' }}>
-                  No exercises yet
-                </div>
-              )}
+            {exList.length === 0 && (
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', padding: '0.75rem 1.5rem' }}>
+                No exercises yet
+              </div>
+            )}
 
-              {exList.map(ex => {
-                const catName = ex.muscle_group_category_name || null
-                const catColor = catName ? (CATEGORY_COLORS[catName] || '#8a8a8a') : 'var(--border)'
-                const detailOptions = catName
-                  ? (MUSCLE_GROUP_CATEGORIES[catName] || [])
-                  : Object.values(MUSCLE_GROUP_CATEGORIES).flat()
+            {exList.map((ex, exIdx) => {
+              const catName = ex.muscle_group_category_name || null
+              const detailOptions = catName
+                ? (MUSCLE_GROUP_CATEGORIES[catName] || [])
+                : Object.values(MUSCLE_GROUP_CATEGORIES).flat()
 
-                return (
-                  <div key={ex.id} style={{
-                    borderLeft: `4px solid ${catColor}`,
-                    borderRadius: '8px',
-                    background: 'var(--surface-hover)',
-                    padding: '0.6rem 0.7rem 0.65rem 0.75rem',
-                    display: 'flex', flexDirection: 'column', gap: '0.5rem',
-                  }}>
+              return (
+                <div key={ex.id}>
+                  <div style={{ padding: '0.6rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
                     {/* Name row */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                       {editingId === ex.id ? (
                         <>
-                          <input
-                            autoFocus
-                            value={editingName}
-                            onChange={e => setEditingName(e.target.value)}
+                          <input autoFocus value={editingName} onChange={e => setEditingName(e.target.value)}
                             onKeyDown={e => { if (e.key === 'Enter') saveEdit(ex.id); if (e.key === 'Escape') cancelEdit() }}
-                            style={{ flex: 1, fontSize: '0.9rem', fontWeight: 600 }}
-                          />
+                            style={{ flex: 1, fontSize: '0.9rem', fontWeight: 600 }} />
                           <button onClick={() => saveEdit(ex.id)} style={iconBtn()}><Check size={15} color="var(--orange)" /></button>
                           <button onClick={cancelEdit} style={iconBtn()}><X size={14} color="var(--text-muted)" /></button>
                         </>
@@ -1576,46 +1613,48 @@ function ExerciseConfig() {
                           <button onClick={() => deleteExercise(ex.id)} style={iconBtn()} title="Delete exercise permanently">
                             <Trash2 size={13} color="var(--text-muted)" />
                           </button>
-                          <button onClick={() => removeExercise(ex.id, type.id)} style={iconBtn()} title="Remove from this day">
+                          <button onClick={() => removeExercise(ex.id, type.id)} style={iconBtn()} title="Remove from this workout type">
                             <X size={14} color="var(--text-muted)" />
                           </button>
                         </>
                       )}
                     </div>
 
-                    {/* Category chips */}
-                    <CategoryChips value={catName} onChange={name => updateCategory(ex.id, name)} />
-
-                    {/* Detail muscle group — only shown when a category is selected */}
-                    {catName && (
+                    {/* Two dropdowns side by side */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                      <Dropdown
+                        value={catName || ''}
+                        onChange={name => updateCategory(ex.id, name)}
+                        placeholder="— category —"
+                        options={catOptions}
+                      />
                       <Dropdown
                         value={ex.muscle_group || ''}
                         onChange={mg => updateMuscleGroup(ex.id, mg)}
-                        placeholder="— specific muscle —"
+                        placeholder="— specific —"
                         options={[
-                          { value: '', label: '— specific muscle —' },
+                          { value: '', label: '— specific —' },
                           ...detailOptions.map(mg => ({ value: mg, label: mg }))
                         ]}
-                        style={{ fontSize: '0.8rem' }}
                       />
-                    )}
+                    </div>
                   </div>
-                )
-              })}
+                  {exIdx < exList.length - 1 && (
+                    <div style={{ height: '1px', background: 'var(--border)', width: '50%', margin: '0 auto' }} />
+                  )}
+                </div>
+              )
+            })}
 
-              {/* Add exercise */}
-              <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '0.35rem', borderTop: '1px solid var(--border)' }}>
-                <input
-                  placeholder="Add exercise..."
-                  value={newNames[type.id] || ''}
-                  onChange={e => setNewNames(prev => ({ ...prev, [type.id]: e.target.value }))}
-                  onKeyDown={e => e.key === 'Enter' && addExercise(type.id)}
-                  style={{ flex: 1 }}
-                />
-                <button onClick={() => addExercise(type.id)} style={btn({ background: accentColor, color: 'white', flexShrink: 0 })}>
-                  <Plus size={14} />
-                </button>
-              </div>
+            {/* Add exercise */}
+            <div style={{ display: 'flex', gap: '0.5rem', padding: '0.65rem 1.5rem 1rem', borderTop: '1px solid var(--border)', marginTop: '0.5rem' }}>
+              <input placeholder="Add exercise..." value={newNames[type.id] || ''}
+                onChange={e => setNewNames(prev => ({ ...prev, [type.id]: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && addExercise(type.id)}
+                style={{ flex: 1 }} />
+              <button onClick={() => addExercise(type.id)} style={btn({ background: 'var(--orange)', color: 'white', flexShrink: 0 })}>
+                <Plus size={14} />
+              </button>
             </div>
           </div>
         )
@@ -1627,26 +1666,24 @@ function ExerciseConfig() {
 function Analytics({ onWeekClick }) {
   const [tab, setTab] = useState('fitness')
   return (
-    <div>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
+    <div style={{ marginLeft: '-1.5rem', marginRight: '-1.5rem' }}>
+      {/* Flat underline tab bar */}
+      <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', marginBottom: '0' }}>
         {[{ key: 'fitness', label: 'Fitness' }, { key: 'nutrition', label: 'Nutrition' }, { key: 'health', label: 'Health' }].map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            style={btn({
-              background: tab === key ? 'var(--orange)' : 'var(--surface)',
-              color: tab === key ? 'white' : 'var(--text-muted)',
-              border: `1px solid ${tab === key ? 'var(--orange)' : 'var(--border)'}`,
-              padding: '0.45rem 1.1rem',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.8rem',
-            })}
-          >{label}</button>
+          <button key={key} onClick={() => setTab(key)} style={{
+            padding: '0.75rem 1.25rem', background: 'none', border: 'none', cursor: 'pointer',
+            color: tab === key ? 'var(--text)' : 'var(--text-muted)',
+            fontWeight: tab === key ? 600 : 400, fontSize: '0.9rem',
+            borderBottom: `2px solid ${tab === key ? 'var(--orange)' : 'transparent'}`,
+            marginBottom: '-1px',
+          }}>{label}</button>
         ))}
       </div>
-      {tab === 'fitness' && <FitnessAnalytics onWeekClick={onWeekClick} />}
-      {tab === 'nutrition' && <NutritionAnalytics />}
-      {tab === 'health' && <HealthAnalytics />}
+      <div style={{ padding: '0 1.5rem' }}>
+        {tab === 'fitness' && <FitnessAnalytics onWeekClick={onWeekClick} />}
+        {tab === 'nutrition' && <NutritionAnalytics />}
+        {tab === 'health' && <HealthAnalytics />}
+      </div>
     </div>
   )
 }
@@ -1733,29 +1770,22 @@ function FitnessAnalytics({ onWeekClick }) {
     return weeks
   })()
 
-  const secCard = { ...card, marginBottom: '1.25rem' }
-  const secLabel = { fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: '1rem' }
+  const secCard = { paddingTop: '1.5rem', paddingBottom: '0.75rem', borderTop: '1px solid var(--border)' }
+  const secLabel = { fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace', marginBottom: '1rem' }
   const tooltipStyle = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '8px', fontSize: '0.78rem', fontFamily: 'JetBrains Mono, monospace' }
 
   return (
     <div>
-      <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text)', marginBottom: '1.25rem' }}>Analytics</div>
-
       {/* Range selector */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.3rem', paddingTop: '1.25rem', paddingBottom: '0.25rem' }}>
         {[{ label: '4w', val: 4 }, { label: '8w', val: 8 }, { label: '3m', val: 12 }].map(({ label, val }) => (
-          <button
-            key={val}
-            onClick={() => setRange(val)}
-            style={btn({
-              background: range === val ? 'var(--orange)' : 'var(--surface)',
-              color: range === val ? 'white' : 'var(--text-muted)',
-              border: `1px solid ${range === val ? 'var(--orange)' : 'var(--border)'}`,
-              padding: '0.35rem 0.9rem',
-              fontFamily: 'JetBrains Mono, monospace',
-              fontSize: '0.78rem',
-            })}
-          >{label}</button>
+          <button key={val} onClick={() => setRange(val)} style={{
+            padding: '0.25rem 0.65rem', background: 'none', border: 'none', cursor: 'pointer',
+            color: range === val ? 'var(--text)' : 'var(--text-muted)',
+            fontWeight: range === val ? 700 : 400,
+            fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem',
+            borderBottom: `2px solid ${range === val ? 'var(--orange)' : 'transparent'}`,
+          }}>{label}</button>
         ))}
       </div>
 
@@ -1786,31 +1816,20 @@ function FitnessAnalytics({ onWeekClick }) {
           </div>
         ) : volumeView === 'category' ? (
           <>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart
-                data={catVolumeChartData}
-                barCategoryGap="30%"
-                margin={{ top: 4, right: 4, bottom: 0, left: -16 }}
-                style={{ cursor: 'pointer' }}
-                onMouseMove={s => { if (s.activePayload?.length) setVolumeTooltip({ label: s.activeLabel, payload: s.activePayload }) }}
-                onMouseLeave={() => setVolumeTooltip(null)}
-                onClick={data => {
-                  const weekRaw = data?.activePayload?.[0]?.payload?.weekRaw
-                  if (!weekRaw || !onWeekClick) return
-                  const end = new Date(weekRaw + 'T12:00:00')
-                  end.setDate(end.getDate() + 6)
-                  onWeekClick({ from: weekRaw, to: toLocalDateStr(end) })
-                }}
-              >
-                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
-                <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
-                <Tooltip content={() => null} wrapperStyle={{ display: 'none' }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                {activeCatKeys.map((cat, i) => (
-                  <Bar key={cat} dataKey={cat} stackId="a" fill={CATEGORY_COLORS[cat]} radius={i === activeCatKeys.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ margin: '0.75rem -1.5rem 0', width: 'calc(100% + 3rem)' }}>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={catVolumeChartData} barCategoryGap="30%" margin={{ top: 4, right: 4, bottom: 0, left: -16 }} style={{ cursor: 'pointer' }}
+                  onMouseMove={s => { if (s.activePayload?.length) setVolumeTooltip({ label: s.activeLabel, payload: s.activePayload }) }}
+                  onMouseLeave={() => setVolumeTooltip(null)}
+                  onClick={data => { const weekRaw = data?.activePayload?.[0]?.payload?.weekRaw; if (!weekRaw || !onWeekClick) return; const end = new Date(weekRaw + 'T12:00:00'); end.setDate(end.getDate() + 6); onWeekClick({ from: weekRaw, to: toLocalDateStr(end) }) }}>
+                  <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+                  <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={() => null} wrapperStyle={{ display: 'none' }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                  {activeCatKeys.map((cat, i) => <Bar key={cat} dataKey={cat} stackId="a" fill={CATEGORY_COLORS[cat]} radius={i === activeCatKeys.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />)}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
             <div style={{ minHeight: '54px', margin: '0.5rem 0 0.25rem' }}>
               {volumeTooltip ? (
                 <div style={{ ...tooltipStyle, padding: '0.55rem 0.85rem' }}>
@@ -1826,47 +1845,33 @@ function FitnessAnalytics({ onWeekClick }) {
                   </div>
                 </div>
               ) : (
-                <div style={{ fontSize: '0.68rem', color: 'var(--border)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', paddingTop: '1rem' }}>
-                  hover a column to see breakdown
-                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--border)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', paddingTop: '1rem' }}>tap a column to see breakdown</div>
               )}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
               {activeCatKeys.map(cat => (
                 <div key={cat} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: 2, background: CATEGORY_COLORS[cat], flexShrink: 0 }} />
-                  {cat}
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: CATEGORY_COLORS[cat], flexShrink: 0 }} />{cat}
                 </div>
               ))}
             </div>
           </>
         ) : (
           <>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart
-                data={volumeChartData}
-                barCategoryGap="30%"
-                margin={{ top: 4, right: 4, bottom: 0, left: -16 }}
-                style={{ cursor: 'pointer' }}
-                onMouseMove={s => { if (s.activePayload?.length) setVolumeTooltip({ label: s.activeLabel, payload: s.activePayload }) }}
-                onMouseLeave={() => setVolumeTooltip(null)}
-                onClick={data => {
-                  const weekRaw = data?.activePayload?.[0]?.payload?.weekRaw
-                  if (!weekRaw || !onWeekClick) return
-                  const end = new Date(weekRaw + 'T12:00:00')
-                  end.setDate(end.getDate() + 6)
-                  onWeekClick({ from: weekRaw, to: toLocalDateStr(end) })
-                }}
-              >
-                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
-                <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
-                <Tooltip content={() => null} wrapperStyle={{ display: 'none' }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
-                {muscleKeys.map((m, i) => (
-                  <Bar key={m} dataKey={m} stackId="a" fill={colorMap[m]} radius={i === muscleKeys.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ margin: '0.75rem -1.5rem 0', width: 'calc(100% + 3rem)' }}>
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={volumeChartData} barCategoryGap="30%" margin={{ top: 4, right: 4, bottom: 0, left: -16 }} style={{ cursor: 'pointer' }}
+                  onMouseMove={s => { if (s.activePayload?.length) setVolumeTooltip({ label: s.activeLabel, payload: s.activePayload }) }}
+                  onMouseLeave={() => setVolumeTooltip(null)}
+                  onClick={data => { const weekRaw = data?.activePayload?.[0]?.payload?.weekRaw; if (!weekRaw || !onWeekClick) return; const end = new Date(weekRaw + 'T12:00:00'); end.setDate(end.getDate() + 6); onWeekClick({ from: weekRaw, to: toLocalDateStr(end) }) }}>
+                  <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+                  <XAxis dataKey="week" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={() => null} wrapperStyle={{ display: 'none' }} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                  {muscleKeys.map((m, i) => <Bar key={m} dataKey={m} stackId="a" fill={colorMap[m]} radius={i === muscleKeys.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]} />)}
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
             <div style={{ minHeight: '54px', margin: '0.5rem 0 0.25rem' }}>
               {volumeTooltip ? (
                 <div style={{ ...tooltipStyle, padding: '0.55rem 0.85rem' }}>
@@ -1882,16 +1887,13 @@ function FitnessAnalytics({ onWeekClick }) {
                   </div>
                 </div>
               ) : (
-                <div style={{ fontSize: '0.68rem', color: 'var(--border)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', paddingTop: '1rem' }}>
-                  hover a column to see breakdown
-                </div>
+                <div style={{ fontSize: '0.68rem', color: 'var(--border)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', paddingTop: '1rem' }}>tap a column to see breakdown</div>
               )}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem 1rem', paddingTop: '0.75rem', borderTop: '1px solid var(--border)' }}>
               {muscleKeys.map(m => (
                 <div key={m} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
-                  <div style={{ width: 8, height: 8, borderRadius: 2, background: colorMap[m], flexShrink: 0 }} />
-                  {m.split(' (')[0]}
+                  <div style={{ width: 8, height: 8, borderRadius: 2, background: colorMap[m], flexShrink: 0 }} />{m.split(' (')[0]}
                 </div>
               ))}
             </div>
@@ -1962,21 +1964,17 @@ function FitnessAnalytics({ onWeekClick }) {
                 ))}
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={130}>
-              <BarChart data={monthlyFilled} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
-                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={fmtMonth} />
-                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  labelStyle={{ color: 'var(--text)', fontWeight: 600, marginBottom: '0.25rem' }}
-                  formatter={v => [v, 'workouts']}
-                  labelFormatter={fmtMonthLong}
-                  cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-                />
-                <Bar dataKey="count" fill="var(--orange)" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <div style={{ margin: '0.75rem -1.5rem 0', width: 'calc(100% + 3rem)' }}>
+              <ResponsiveContainer width="100%" height={130}>
+                <BarChart data={monthlyFilled} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
+                  <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={fmtMonth} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--text)', fontWeight: 600, marginBottom: '0.25rem' }} formatter={v => [v, 'workouts']} labelFormatter={fmtMonthLong} cursor={{ fill: 'rgba(255,255,255,0.03)' }} />
+                  <Bar dataKey="count" fill="var(--orange)" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         )
       })()}
@@ -1997,7 +1995,7 @@ function FitnessAnalytics({ onWeekClick }) {
             </div>
           ))}
         </div>
-        <div style={{ overflowX: 'auto' }}>
+        <div style={{ overflowX: 'auto', margin: '0 -1.5rem', padding: '0 1.5rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '44px repeat(7, 22px)', gap: '3px', minWidth: 'fit-content' }}>
             <div />
             {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
@@ -2069,21 +2067,17 @@ function FitnessAnalytics({ onWeekClick }) {
           </div>
         )}
         {progData.length > 0 && (
-          <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={progData} margin={{ top: 4, right: 4, bottom: 0, left: -4 }}>
-              <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
-              <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={fmtShortDate} />
-              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={v => `${v}kg`} width={44} />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                labelStyle={{ color: 'var(--text)', marginBottom: '0.3rem', fontWeight: 600 }}
-                formatter={v => [`${v} kg`, 'Top set']}
-                labelFormatter={fmtShortDate}
-                cursor={{ stroke: 'var(--border)', strokeWidth: 1 }}
-              />
-              <Line type="monotone" dataKey="max_weight" stroke="var(--orange)" strokeWidth={2} dot={{ fill: 'var(--orange)', r: 3, strokeWidth: 0 }} activeDot={{ r: 5, fill: 'var(--orange)', strokeWidth: 0 }} />
-            </LineChart>
-          </ResponsiveContainer>
+          <div style={{ margin: '0.75rem -1.5rem 0', width: 'calc(100% + 3rem)' }}>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={progData} margin={{ top: 4, right: 4, bottom: 0, left: -4 }}>
+                <CartesianGrid vertical={false} stroke="var(--border)" strokeDasharray="3 3" />
+                <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={fmtShortDate} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={v => `${v}kg`} width={44} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: 'var(--text)', marginBottom: '0.3rem', fontWeight: 600 }} formatter={v => [`${v} kg`, 'Top set']} labelFormatter={fmtShortDate} cursor={{ stroke: 'var(--border)', strokeWidth: 1 }} />
+                <Line type="monotone" dataKey="max_weight" stroke="var(--orange)" strokeWidth={2} dot={{ fill: 'var(--orange)', r: 3, strokeWidth: 0 }} activeDot={{ r: 5, fill: 'var(--orange)', strokeWidth: 0 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </div>
     </div>
@@ -2176,12 +2170,12 @@ function NutritionAnalytics() {
   }), { calories: 0, protein_g: 0, carbs_g: 0, fat_g: 0 })
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       {days.map(ds => {
         const dayMeals = mealsByDay(ds)
         const totals = dayTotals(dayMeals)
         return (
-          <div key={ds} style={card}>
+          <div key={ds} style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem', paddingBottom: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
               <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.78rem', color: 'var(--text)', fontWeight: 600 }}>{fmtDayHeader(ds)}</div>
               {ds === todayStr && (
